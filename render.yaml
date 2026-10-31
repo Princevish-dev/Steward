@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: steward
+    runtime: node
+    buildCommand: npm ci && npm run db:migrate && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_UNPOOLED
+        sync: false
+      - key: PAYPAL_ENVIRONMENT
+        value: SANDBOX
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: APP_BASE_URL
+        sync: false

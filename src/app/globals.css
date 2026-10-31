@@ -1,0 +1,14 @@
+:root {
+  color-scheme: dark;
+  background: #0b1020;
+  color: #eef2ff;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}

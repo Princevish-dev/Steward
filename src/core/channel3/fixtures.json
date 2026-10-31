@@ -1,0 +1,35 @@
+[
+  {
+    "id": "paper-a4-001",
+    "title": "A4 Printer Paper, 500 Sheets",
+    "description": "Bright white office paper for everyday printing.",
+    "merchant": "paper-co.example",
+    "category": "office_supplies",
+    "price": 18.99,
+    "currency": "USD",
+    "availability": "in_stock",
+    "url": "https://products.example/paper-a4-001"
+  },
+  {
+    "id": "coffee-medium-001",
+    "title": "Medium Roast Ground Coffee",
+    "description": "Balanced medium roast coffee for the studio kitchen.",
+    "merchant": "coffee-market.example",
+    "category": "coffee_tea",
+    "price": 14.5,
+    "currency": "USD",
+    "availability": "in_stock",
+    "url": "https://products.example/coffee-medium-001"
+  },
+  {
+    "id": "cleaner-001",
+    "title": "Multipurpose Surface Cleaner",
+    "description": "Concentrated cleaner for desks and shared surfaces.",
+    "merchant": "clean-home.example",
+    "category": "cleaning_supplies",
+    "price": 9.99,
+    "currency": "USD",
+    "availability": "in_stock",
+    "url": "https://products.example/cleaner-001"
+  }
+]
