@@ -3,6 +3,7 @@ import { paypalRequest } from "@/core/paypal/client";
 
 export type OrderRequest = {
   runId: string;
+  mandateId: string;
   cartHash: string;
   amount: number;
   currency: "USD";
@@ -56,8 +57,8 @@ export async function createSandboxOrder(request: OrderRequest): Promise<PayPalC
       application_context: {
         brand_name: "Steward Sandbox",
         user_action: "PAY_NOW",
-        return_url: `${request.publicBaseUrl}/api/paypal/return?runId=${encodeURIComponent(request.runId)}`,
-        cancel_url: `${request.publicBaseUrl}/dashboard?paypal=cancelled`
+        return_url: `${request.publicBaseUrl}/api/paypal/return?runId=${encodeURIComponent(request.runId)}&mandateId=${encodeURIComponent(request.mandateId)}`,
+        cancel_url: `${request.publicBaseUrl}/dashboard?paypal=cancelled&mandateId=${encodeURIComponent(request.mandateId)}`
       }
     })
   });

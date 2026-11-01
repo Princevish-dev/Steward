@@ -5,6 +5,7 @@ describe("PayPal order boundary", () => {
   it("uses USD and a run/cart-derived idempotency key", () => {
     const request = toPayPalOrderRequest({
       runId: "run_1",
+      mandateId: "mandate_1",
       cartHash: "cart_1",
       amount: 18.99,
       currency: "USD",
@@ -20,6 +21,7 @@ describe("PayPal order boundary", () => {
     expect(() =>
       toPayPalOrderRequest({
         runId: "run_1",
+        mandateId: "mandate_1",
         cartHash: "cart_1",
         amount: 18.99,
         currency: "USD",

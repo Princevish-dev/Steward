@@ -110,7 +110,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("mandateId")) setMandateId(params.get("mandateId"));
+    const returnedMandateId = params.get("mandateId");
+    if (returnedMandateId) setMandateId(returnedMandateId);
     if (params.get("paypal") === "approved") {
       setApprovedOrderId(params.get("orderId"));
       setApprovedRunId(params.get("runId"));

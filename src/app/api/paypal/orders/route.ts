@@ -52,6 +52,7 @@ export async function POST(request: Request) {
     }
     const order = await createSandboxOrder({
       runId: value.runId,
+      mandateId: context.mandate_id,
       cartHash: computedCartHash,
       amount,
       currency: "USD",
