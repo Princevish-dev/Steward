@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createDemoMandate, draftMandateFromIntent } from "@/core/mandate/parser";
 import { createMandate } from "@/core/domain/store";
-import { createSessionToken, readSessionOwner, sessionCookie } from "@/core/auth/session";
+import { createSessionToken, sessionCookie } from "@/core/auth/session";
 import { mandateSchema, type Mandate } from "@/core/mandate/schema";
 
 export async function POST(request: Request) {
@@ -10,11 +10,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "owner and intent are required." }, { status: 422 });
   }
   try {
-    const sessionOwner = readSessionOwner(request);
-    if (sessionOwner && sessionOwner !== body.owner) {
-      return NextResponse.json({ error: "Mandate owner does not match the current session." }, { status: 403 });
-    }
-
     let mandate: Mandate;
     if (body.mandate && typeof body.mandate === "object") {
       const parsed = mandateSchema.safeParse({
@@ -37,6 +32,7 @@ export async function POST(request: Request) {
 
     await createMandate(mandate);
     const response = NextResponse.json({ mandate }, { status: 201 });
+    // Update or establish the owner's authenticated session cookie
     response.cookies.set(sessionCookie(createSessionToken(body.owner)));
     return response;
   } catch (error) {

@@ -78,6 +78,7 @@ async function readJson<T>(response: Response): Promise<T> {
 
 export default function DashboardPage() {
   const [owner, setOwner] = useState("");
+  const [mandateOwner, setMandateOwner] = useState("");
   const [task, setTask] = useState("");
   const [result, setResult] = useState<RunResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -142,6 +143,7 @@ export default function DashboardPage() {
       const body = await response.json() as { mandate?: { owner: string; purpose: string; status: string } };
       if (!body.mandate) return;
       setOwner(body.mandate.owner);
+      setMandateOwner(body.mandate.owner);
       setTask(body.mandate.purpose);
       setMandateStatus(`Mandate ${body.mandate.status} — ready for governed runs.`);
     })();
@@ -179,6 +181,7 @@ export default function DashboardPage() {
         return;
       }
       setOwner(body.mandate.owner);
+      setMandateOwner(body.mandate.owner);
       setTask(body.mandate.purpose);
       setMandateId(body.mandate.id);
       setMandateStatus("Mandate ACTIVE — demo data ready.");
@@ -260,7 +263,7 @@ export default function DashboardPage() {
     setResult(null);
     try {
       let activeMandateId = mandateId;
-      if (!activeMandateId) {
+      if (!activeMandateId || (owner && mandateOwner && owner.trim().toLowerCase() !== mandateOwner.trim().toLowerCase())) {
         const defaultOwner = owner || "judge@example.com";
         const defaultTask = task || "Buy paper and coffee for the studio; max $120 a month; nothing over $40; ask me above $60.";
         const draftResponse = await fetch("/api/mandates", {
@@ -275,6 +278,7 @@ export default function DashboardPage() {
         if (!confirmResponse.ok || !confirmed.mandate) throw new Error(confirmed.error ?? "Could not confirm mandate.");
         activeMandateId = confirmed.mandate.id;
         setOwner(confirmed.mandate.owner);
+        setMandateOwner(confirmed.mandate.owner);
         setTask(confirmed.mandate.purpose);
         setMandateId(activeMandateId);
         setMandateStatus("Mandate ACTIVE");

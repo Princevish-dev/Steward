@@ -37,9 +37,10 @@ function itemFromProduct(product: Product, quantity = 1) {
 function categoryForQuery(query: string, allowed: Category[]): Category | undefined {
   const normalized = query.toLowerCase();
   const keywords: Array<[Category, string[]]> = [
-    ["office_supplies", ["paper", "printer", "pen", "office", "stationery"]],
+    ["office_supplies", ["paper", "printer", "pen", "office", "stationery", "chair", "desk"]],
     ["coffee_tea", ["coffee", "tea", "espresso", "roast"]],
-    ["groceries_pantry", ["grocery", "pantry", "food", "snack"]]
+    ["groceries_pantry", ["grocery", "pantry", "food", "snack"]],
+    ["cleaning_supplies", ["cleaner", "soap", "surface"]]
   ];
   return keywords.find(([category, terms]) =>
     allowed.includes(category) && terms.some((term) => normalized.includes(term))
