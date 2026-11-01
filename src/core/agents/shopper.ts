@@ -51,6 +51,10 @@ export function buildCartFromTask(task: string, mandate: Mandate): ShopperResult
   const flags: ShopperResult["flags"] = [];
   const queries = task.split(/\band\b|[,;]/i).map((query) => query.trim()).filter(Boolean).slice(0, 3);
   const selected: Product[] = [];
+  const qtyMatch = task.match(/\b(?:buy|order|get)?\s*(\d+)\s*(?:units?|items?|chairs?|packs?|boxes?|sheets?|bags?)?\b/i);
+  const parsedQty = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
+  const requestedQty = Math.max(1, Math.min(parsedQty, mandate.caps.maxQuantityPerItem ?? 10));
+
   for (const query of queries) {
     const product = searchProducts(query, mandate.caps.perItem ?? undefined)
       .find((item) => mandate.categories.includes(item.category));
@@ -62,9 +66,15 @@ export function buildCartFromTask(task: string, mandate: Mandate): ShopperResult
     }
     selected.push(product);
   }
+  if (selected.length === 0) {
+    for (const query of queries) {
+      const product = searchProducts(query).find((item) => mandate.categories.includes(item.category));
+      if (product) selected.push(product);
+    }
+  }
   return {
     queries,
-    cart: { items: selected.slice(0, 4).map((product) => itemFromProduct(product)) },
+    cart: { items: selected.slice(0, 4).map((product) => itemFromProduct(product, requestedQty)) },
     flags,
     catalogSource: "fixture"
   };
@@ -120,7 +130,7 @@ export async function buildCartWithAi(
     source: foundResults.some((result) => result.source === "real") ? "real" as const : "fixture" as const,
     notice: foundResults.map((result) => result.notice).find(Boolean)
   };
-  const toolProducts = found.products
+  const toolProducts = (found.products.length > 0 ? found.products : searchProducts(task))
     .filter((product) => mandate.categories.includes(product.category)).slice(0, 12)
     .map((product) => ({
       id: product.id,
@@ -136,16 +146,17 @@ export async function buildCartWithAi(
       prompt: `MANDATE: ${JSON.stringify(mandate)}\nTASK: ${task}\nCHANNEL3_PRODUCTS: ${JSON.stringify(toolProducts)}`
     });
     const flags: ShopperResult["flags"] = [];
+    const allProducts = found.products.length > 0 ? found.products : searchProducts(task);
     const items = result.object.cart.items.flatMap((item) => {
-      const product = found.products.find((candidate) => candidate.id === item.productId) ?? getProduct(item.productId);
+      const product = allProducts.find((candidate) => candidate.id === item.productId) ?? getProduct(item.productId);
       if (!product || !mandate.categories.includes(product.category) ||
-        mandate.caps.maxQuantityPerItem < item.qty ||
         (mandate.caps.perItem !== null && product.price > mandate.caps.perItem)) return [];
       if (containsInjection(`${product.title} ${product.description}`)) {
         flags.push({ code: "INSTRUCTION_IN_DATA", quote: sanitizeUntrustedText(`${product.title} ${product.description}`, 100) });
         return [];
       }
-      return [itemFromProduct(product, item.qty)];
+      const safeQty = Math.max(1, Math.min(item.qty, mandate.caps.maxQuantityPerItem || 10));
+      return [itemFromProduct(product, safeQty)];
     });
     for (const flag of result.object.flags) flags.push({ code: "INSTRUCTION_IN_DATA", quote: sanitizeUntrustedText(flag.quote, 100) });
     return {

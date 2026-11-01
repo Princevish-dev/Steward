@@ -41,7 +41,8 @@ export async function POST(request: Request) {
     if (!mandate) return NextResponse.json({ error: "Mandate not found." }, { status: 404 });
     if (!ownsMandate(sessionOwner, mandate.owner)) return NextResponse.json({ error: "Mandate access denied." }, { status: 403 });
     const validScenario = scenario === "within" || scenario === "ask" || scenario === "over-cap" || scenario === "hostile";
-    const shopper = validScenario
+    const isCustomTask = Boolean(task && task.trim() && !task.startsWith("A4 printer paper") && !task.startsWith("Paper and coffee") && !task.startsWith("Bulk luxury") && !task.startsWith("Office supplies with injection"));
+    const shopper = (validScenario && !isCustomTask)
       ? buildScenarioCart(scenario, mandate)
       : (useLlm
         ? await buildCartWithAi(task, mandate)
@@ -66,7 +67,7 @@ export async function POST(request: Request) {
       });
     let finalDecision = policy.decision;
     let reviewer: Awaited<ReturnType<typeof reviewPurchase>> | undefined;
-    if (useLlm && !inactive) {
+    if (useLlm && !inactive && shopper.cart.items.length > 0) {
       reviewer = await reviewPurchase({
         mandate,
         cart: shopper.cart,
