@@ -119,7 +119,7 @@ export default function OrdersPage() {
           data={orders}
           renderCell={(item, key) => {
             if (key === "status") return <StatusBadge status={item.status as any} />;
-            if (key === "amount") return `$${item.amount.toFixed(2)}`;
+            if (key === "amount") return `$${Number(item.amount || 0).toFixed(2)}`;
             if (key === "capture_id") return item.capture_id ?? "—";
             return item[key as keyof OrderRow];
           }}

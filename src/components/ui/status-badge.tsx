@@ -23,8 +23,9 @@ const statusColors: Record<string, { bg: string; text: string; border: string }>
   REFUNDED: { bg: "#173b35", text: "#8b9cff", border: "#2e4a7a" }
 };
 
-export function StatusBadge({ status, size = "sm" }: StatusBadgeProps) {
-  const colors = statusColors[status] ?? statusColors.DRAFT;
+export function StatusBadge({ status, size = "sm" }: { status?: string | null; size?: "sm" | "md" }) {
+  const safeStatus = status ?? "DRAFT";
+  const colors = statusColors[safeStatus] ?? statusColors.DRAFT;
   const textSize = size === "sm" ? "text-xs" : "text-sm";
   const padding = size === "sm" ? "px-2 py-0.5" : "px-3 py-1";
 
@@ -37,7 +38,7 @@ export function StatusBadge({ status, size = "sm" }: StatusBadgeProps) {
         borderColor: colors.border
       }}
     >
-      {status.replace(/_/g, " ")}
+      {(status ? String(status) : "—").replace(/_/g, " ")}
     </span>
   );
 }

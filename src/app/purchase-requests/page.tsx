@@ -108,7 +108,7 @@ export default function PurchaseRequestsPage() {
           data={runs}
           renderCell={(item, key) => {
             if (key === "decision") return <StatusBadge status={item.decision as any} />;
-            if (key === "total") return `$${item.total.toFixed(2)}`;
+            if (key === "total") return `$${Number(item.total || 0).toFixed(2)}`;
             return item[key as keyof RunRow] as React.ReactNode;
           }}
           rowKey={(item) => item.run_id}

@@ -111,7 +111,7 @@ export default function PaymentsPage() {
           data={payments}
           renderCell={(item, key) => {
             if (key === "status") return <StatusBadge status={item.status as any} />;
-            if (key === "amount") return `$${item.amount.toFixed(2)}`;
+            if (key === "amount") return `$${Number(item.amount || 0).toFixed(2)}`;
             if (key === "captureId") return item.captureId ?? "—";
             return item[key as keyof PaymentRow];
           }}

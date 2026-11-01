@@ -106,7 +106,7 @@ export default function RefundsPage() {
           data={refunds}
           renderCell={(item, key) => {
             if (key === "status") return <StatusBadge status={item.status as any} />;
-            if (key === "amount") return item.amount !== null ? `$${item.amount.toFixed(2)}` : "—";
+            if (key === "amount") return item.amount !== null && item.amount !== undefined ? `$${Number(item.amount).toFixed(2)}` : "—";
             return item[key as keyof RefundRow];
           }}
           rowKey={(item) => item.refundId}

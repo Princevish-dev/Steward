@@ -131,7 +131,7 @@ export default function ApprovalsPage() {
                   </div>
                   <div className="text-right">
                     {approval.total !== undefined && (
-                      <p className="text-sm font-semibold text-text-primary">${approval.total.toFixed(2)}</p>
+                      <p className="text-sm font-semibold text-text-primary">${Number(approval.total).toFixed(2)}</p>
                     )}
                     <p className="text-xs text-text-muted">{approval.expires_at ? new Date(approval.expires_at).toISOString().slice(0, 10) : "24h expiry"}</p>
                   </div>
@@ -177,7 +177,7 @@ export default function ApprovalsPage() {
             data={resolved}
             renderCell={(item, key) => {
               if (key === "status") return <StatusBadge status={item.status as any} />;
-              if (key === "total") return item.total !== undefined ? `$${item.total.toFixed(2)}` : "—";
+              if (key === "total") return item.total !== undefined ? `$${Number(item.total).toFixed(2)}` : "—";
               return item[key as keyof ApprovalRow];
             }}
             rowKey={(item) => item.id}

@@ -245,7 +245,7 @@ export default function DashboardPage() {
             data={runs}
             renderCell={(item, key) => {
               if (key === "decision") return <StatusBadge status={item.decision as any} />;
-              if (key === "total") return `$${item.total.toFixed(2)}`;
+              if (key === "total") return `$${Number(item.total || 0).toFixed(2)}`;
               return item[key as keyof RunRow] as React.ReactNode;
             }}
             rowKey={(item) => item.run_id}
@@ -281,7 +281,7 @@ export default function DashboardPage() {
                   </div>
                   <p className="text-sm text-text-secondary">{approval.reason ?? "Awaiting human review."}</p>
                   {approval.total !== undefined && (
-                    <p className="text-sm text-text-primary mt-1">Total: ${approval.total.toFixed(2)}</p>
+                    <p className="text-sm text-text-primary mt-1">Total: ${Number(approval.total).toFixed(2)}</p>
                   )}
                   <div className="mt-3 flex gap-2">
                     <Button variant="success" size="sm" onClick={() => {}}>
