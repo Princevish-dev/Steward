@@ -73,6 +73,7 @@ export default function DashboardPage() {
   const [paypalStatus, setPaypalStatus] = useState<string | null>(null);
   const [orderStatus, setOrderStatus] = useState<string | null>(null);
   const [approvedOrderId, setApprovedOrderId] = useState<string | null>(null);
+  const [approvalUrl, setApprovalUrl] = useState<string | null>(null);
   const [captureStatus, setCaptureStatus] = useState<string | null>(null);
   const [mandateId, setMandateId] = useState<string | null>(null);
   const [mandateStatus, setMandateStatus] = useState("No mandate confirmed");
@@ -151,6 +152,7 @@ export default function DashboardPage() {
           body: JSON.stringify({ runId: approval.run_id })
         });
         const order = await orderResponse.json() as { approvalUrl?: string; error?: string };
+        setApprovalUrl(order.approvalUrl ?? null);
         setOrderStatus(orderResponse.ok
           ? "PayPal Sandbox order created. Buyer approval is required before capture."
           : order.error ?? "Could not create the gated order.");
@@ -255,6 +257,7 @@ export default function DashboardPage() {
       return;
     }
 
+    setApprovalUrl(body.approvalUrl ?? null);
     setOrderStatus(`Order ${body.orderId} created. ${body.approvalUrl ? "Open the approval link to continue." : ""}`);
     if (body.approvalUrl) window.open(body.approvalUrl, "_blank", "noopener,noreferrer");
   }
@@ -393,9 +396,21 @@ export default function DashboardPage() {
                   </div>
                 )}
                 {result.decision !== "BLOCK" && (
-                  <button type="button" onClick={createPayPalOrder} style={{ padding: ".7rem 1rem" }}>
-                    Create PayPal Sandbox Order
-                  </button>
+                  <>
+                    <button type="button" onClick={createPayPalOrder} style={{ padding: ".7rem 1rem" }}>
+                      Create PayPal Sandbox Order
+                    </button>
+                    {approvalUrl && (
+                      <a
+                        href={approvalUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ display: "inline-block", marginLeft: ".5rem", padding: ".7rem 1rem", color: "#08111f", background: "#6ee7b7", borderRadius: 4, fontWeight: 700 }}
+                      >
+                        Approve in PayPal Sandbox
+                      </a>
+                    )}
+                  </>
                 )}
                 {result.tracking && <p>Shipment: {result.tracking.status} — {result.tracking.carrier} / {result.tracking.trackingNumber} (simulated carrier)</p>}
                 <div style={{ display: "flex", gap: ".5rem", flexWrap: "wrap", marginTop: ".75rem" }}>

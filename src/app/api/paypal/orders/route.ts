@@ -56,7 +56,7 @@ export async function POST(request: Request) {
       currency: "USD",
       vaultToken: "approval-required"
     });
-    const approvalUrl = order.links?.find((link) => link.rel === "approve")?.href ?? null;
+    const approvalUrl = order.links?.find((link) => link.rel === "approve" || link.rel === "payer-action")?.href ?? null;
     await persistPaymentOrder({
       id: order.id,
       runId: value.runId,
