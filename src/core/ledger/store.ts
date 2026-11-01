@@ -54,8 +54,10 @@ export async function recordLedgerEvent(input: LedgerInput): Promise<LedgerEntry
       timestamp
     );
     const hasUserId = Boolean(input.userId);
-    const inserted = hasUserId
-      ? await client.query(
+    let inserted;
+    if (hasUserId) {
+      try {
+        inserted = await client.query(
           `INSERT INTO ledger_entries
             (sequence, timestamp, type, run_id, mandate_id, user_id, payload, prev_hash, entry_hash)
            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)
@@ -71,8 +73,9 @@ export async function recordLedgerEvent(input: LedgerInput): Promise<LedgerEntry
             candidate.prevHash,
             candidate.entryHash
           ]
-        )
-      : await client.query(
+        );
+      } catch {
+        inserted = await client.query(
           `INSERT INTO ledger_entries
             (sequence, timestamp, type, run_id, mandate_id, payload, prev_hash, entry_hash)
            VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
@@ -88,6 +91,25 @@ export async function recordLedgerEvent(input: LedgerInput): Promise<LedgerEntry
             candidate.entryHash
           ]
         );
+      }
+    } else {
+      inserted = await client.query(
+        `INSERT INTO ledger_entries
+          (sequence, timestamp, type, run_id, mandate_id, payload, prev_hash, entry_hash)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
+         RETURNING sequence, timestamp, type, run_id, mandate_id, payload, prev_hash, entry_hash`,
+        [
+          candidate.sequence,
+          candidate.timestamp,
+          candidate.type,
+          candidate.runId,
+          candidate.mandateId,
+          JSON.stringify(candidate.payload),
+          candidate.prevHash,
+          candidate.entryHash
+        ]
+      );
+    }
     await client.query("COMMIT");
     return rowToEntry(inserted.rows[0]);
   } catch (error) {
@@ -116,15 +138,27 @@ export async function readLedgerForMandate(mandateId: string): Promise<LedgerEnt
 }
 
 export async function readLedgerForOwner(owner: string): Promise<LedgerEntry[]> {
-  const result = await getDatabasePool().query(
-    `SELECT l.sequence, l.timestamp, l.type, l.run_id, l.mandate_id, l.payload, l.prev_hash, l.entry_hash
-     FROM ledger_entries l
-     JOIN mandates m ON m.id = l.mandate_id
-     WHERE m.owner = $1 OR m.user_id = $1 OR l.user_id = $1
-     ORDER BY l.sequence ASC`,
-    [owner]
-  );
-  return result.rows.map(rowToEntry);
+  try {
+    const result = await getDatabasePool().query(
+      `SELECT l.sequence, l.timestamp, l.type, l.run_id, l.mandate_id, l.payload, l.prev_hash, l.entry_hash
+       FROM ledger_entries l
+       JOIN mandates m ON m.id = l.mandate_id
+       WHERE m.owner = $1 OR m.user_id = $1 OR l.user_id = $1
+       ORDER BY l.sequence ASC`,
+      [owner]
+    );
+    return result.rows.map(rowToEntry);
+  } catch {
+    const result = await getDatabasePool().query(
+      `SELECT l.sequence, l.timestamp, l.type, l.run_id, l.mandate_id, l.payload, l.prev_hash, l.entry_hash
+       FROM ledger_entries l
+       JOIN mandates m ON m.id = l.mandate_id
+       WHERE m.owner = $1
+       ORDER BY l.sequence ASC`,
+      [owner]
+    );
+    return result.rows.map(rowToEntry);
+  }
 }
 
 export async function readLedgerGridForMandate(mandateId: string) {
