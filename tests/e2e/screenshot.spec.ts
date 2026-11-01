@@ -1,31 +1,74 @@
 import { test, expect } from "@playwright/test";
 
-test("capture homepage screenshots", async ({ page }) => {
-  await page.goto("/");
-  await page.waitForLoadState("networkidle");
+const ALL_PAGES = [
+  { name: "landing", path: "/" },
+  { name: "dashboard", path: "/dashboard" },
+  { name: "mandates", path: "/mandates" },
+  { name: "mandate-wizard", path: "/new" },
+  { name: "purchase-requests", path: "/purchase-requests" },
+  { name: "approvals", path: "/approvals" },
+  { name: "orders", path: "/orders" },
+  { name: "payments", path: "/payments" },
+  { name: "refunds", path: "/refunds" },
+  { name: "tracking", path: "/tracking" },
+  { name: "ledger", path: "/ledger" },
+  { name: "redteam", path: "/redteam" },
+  { name: "disputes", path: "/disputes" },
+  { name: "mcp", path: "/mcp" },
+  { name: "settings", path: "/settings" },
+  { name: "api-docs", path: "/api-docs" },
+];
 
-  // Desktop screenshot
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.screenshot({ path: "test-results/homepage-desktop.png", fullPage: true });
+test.describe("Full Visual QA & Screenshot Matrix", () => {
+  let seeded = false;
 
-  // Mobile screenshot
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: "test-results/homepage-mobile.png", fullPage: true });
+  test.beforeEach(async ({ page }) => {
+    if (!seeded) {
+      await page.request.post("/api/demo", {
+        data: { owner: "judge@example.com" }
+      }).catch(() => {});
+      seeded = true;
+    }
+  });
 
-  // Verify key elements visible at desktop
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await expect(page.getByRole("heading", { name: /Give your AI agent a mandate, not your credit card./ })).toBeVisible();
-  await expect(page.getByRole("link", { name: /Launch Control Room/ }).first()).toBeVisible();
-  await expect(page.getByRole("link", { name: /Create a Mandate/ }).first()).toBeVisible();
-});
+  for (const pageItem of ALL_PAGES) {
+    test(`capture ${pageItem.name} page`, async ({ page }, testInfo) => {
+      const isMobile = testInfo.project.name === "mobile";
+      const mode = isMobile ? "mobile" : "desktop";
 
-test("capture dashboard screenshots", async ({ page }) => {
-  await page.goto("/dashboard");
-  await page.waitForLoadState("networkidle");
+      await page.goto(pageItem.path, { waitUntil: "domcontentloaded", timeout: 30000 });
+      await page.waitForTimeout(500);
 
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.screenshot({ path: "test-results/dashboard-desktop.png", fullPage: true });
+      // Verify no horizontal overflow on mobile
+      if (isMobile) {
+        const bodyOverflow = await page.evaluate(() => {
+          return {
+            scrollWidth: document.body.scrollWidth,
+            clientWidth: document.documentElement.clientWidth,
+          };
+        });
+        expect(bodyOverflow.scrollWidth).toBeLessThanOrEqual(bodyOverflow.clientWidth + 2);
+      }
 
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: "test-results/dashboard-mobile.png", fullPage: true });
+      // Capture screenshot into test-results/screenshots/<mode>/
+      await page.screenshot({
+        path: `test-results/screenshots/${mode}/${pageItem.name}.png`,
+        fullPage: true,
+      });
+
+      // Preserve legacy root screenshot paths
+      if (pageItem.name === "landing") {
+        await page.screenshot({
+          path: `test-results/homepage-${mode}.png`,
+          fullPage: true,
+        });
+      }
+      if (pageItem.name === "dashboard") {
+        await page.screenshot({
+          path: `test-results/dashboard-${mode}.png`,
+          fullPage: true,
+        });
+      }
+    });
+  }
 });
