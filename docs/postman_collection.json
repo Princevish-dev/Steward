@@ -1,0 +1,49 @@
+{
+  "info": {
+    "name": "Steward Sandbox API",
+    "_postman_id": "steward-sandbox",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "runId", "value": "" },
+    { "key": "mandateId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/health" }
+    },
+    {
+      "name": "Demo login",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "content-type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\"owner\":\"judge@example.com\"}" },
+        "url": "{{baseUrl}}/api/demo"
+      }
+    },
+    {
+      "name": "Run within mandate",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "content-type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\"mandateId\":\"{{mandateId}}\",\"task\":\"A4 printer paper\",\"scenario\":\"within\"}" },
+        "url": "{{baseUrl}}/api/runs"
+      }
+    },
+    {
+      "name": "Create PayPal order",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "content-type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\"runId\":\"{{runId}}\"}" },
+        "url": "{{baseUrl}}/api/paypal/orders"
+      }
+    },
+    {
+      "name": "Verify ledger",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/ledger/verify" }
+    }
+  ]
+}

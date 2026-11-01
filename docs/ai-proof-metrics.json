@@ -1,0 +1,26 @@
+[
+  {
+    "Agent": "Mandate Parser",
+    "Model": "gemini-3.5-flash-lite",
+    "LatencyMs": 1770,
+    "InputTokens": 130,
+    "OutputTokens": 292,
+    "CostUSD": "$0.000130"
+  },
+  {
+    "Agent": "Shopper Agent",
+    "Model": "gemini-3.5-flash-lite",
+    "LatencyMs": 1229,
+    "InputTokens": 486,
+    "OutputTokens": 179,
+    "CostUSD": "$0.000120"
+  },
+  {
+    "Agent": "Risk Reviewer",
+    "Model": "gemini-3.5-flash-lite",
+    "LatencyMs": 1151,
+    "InputTokens": 569,
+    "OutputTokens": 103,
+    "CostUSD": "$0.000098"
+  }
+]

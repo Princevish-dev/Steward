@@ -1,5 +1,16 @@
 # Steward
 
+## 30-second pitch
+
+Steward lets an AI agent shop through PayPal Sandbox under an owner-defined
+mandate. AI proposes and explains; deterministic policy rules decide; the server
+alone can pay; and every transition is verifiable in a SHA-256 ledger.
+
+**Try it live:** configure the deployed URL in the Devpost submission. The
+dashboard's **Demo login** is the judge path. PayPal Sandbox buyer credentials
+are intentionally placeholders and must be supplied by the release owner, not
+committed here.
+
 Steward is a safety-first PayPal Sandbox purchasing agent. A plain-English mandate
 becomes an explicit budget and cap; fixture-backed Channel3 product data becomes a
 cart; deterministic rules decide `AUTO_APPROVE`, `ASK_HUMAN`, or `BLOCK`; and every
@@ -47,13 +58,16 @@ five hostile-data fixtures end to end.
 
 ![Ledger grid and verification](./docs/screenshots/dashboard-ledger.png)
 
+The visible banner states the current catalog and fulfilment mode:
+**PayPal Sandbox - Channel3 live/fixture - fulfilment simulated**.
+
 ## PayPal API map
 
 | Steward route | PayPal operation |
 |---|---|
 | `/api/paypal/orders` | Create Sandbox buyer-approved order |
 | `/api/paypal/capture` | Capture the run-bound order |
-| `/api/paypal/vault` | Vault spike endpoint (requires PayPal Vault sandbox enablement) |
+| `/api/paypal/vault` | Explicitly unavailable; buyer approves each Sandbox order |
 | `/api/paypal/refund` | Refund the persisted capture |
 | `/api/paypal/webhook` | Verify webhook signature and record event |
 | `/api/paypal/webhook/replay` | Development-only simulated dispute replay |
@@ -71,11 +85,21 @@ tracking number are simulated, although the tracking API call is real.
 
 | Agent Role | Model | Latency | Tokens (In / Out) | Est. Cost (USD) | Fallback Guarantee |
 |---|---|---|---|---|---|
-| Mandate Parser | `gemini-3.5-flash-lite` | 2,050 ms | 130 / 322 | $0.000142 | Pure regex + keyword intent parser |
-| Shopper Agent | `gemini-3.5-flash-lite` | 1,422 ms | 491 / 179 | $0.000121 | Deterministic item ranker + Channel3 fixtures |
-| Risk Reviewer | `gemini-3.5-flash-lite` | 1,350 ms | 562 / 80 | $0.000088 | Escalate to `ASK_HUMAN` (fail-safe) |
+| Mandate Parser | `gemini-3.5-flash-lite` | 1,770 ms | 130 / 292 | $0.000130 | Pure regex + keyword intent parser |
+| Shopper Agent | `gemini-3.5-flash-lite` | 1,229 ms | 486 / 179 | $0.000120 | Deterministic item ranker + Channel3 fixtures |
+| Risk Reviewer | `gemini-3.5-flash-lite` | 1,151 ms | 569 / 103 | $0.000098 | Escalate to `ASK_HUMAN` (fail-safe) |
 
-All AI outputs strictly adhere to Zod validation schemas. When `USE_LLM=false` or an API outage occurs, deterministic fallbacks activate immediately with zero disruption to order validation.
+All AI outputs strictly adhere to Zod validation schemas. When `USE_LLM=false` or
+an API outage occurs, deterministic fallbacks activate immediately with zero
+disruption to order validation. These three calls were verified on 2026-11-01
+with the configured Gemini API credential; the checked-in metrics file records
+their latency and estimated cost.
+
+| Prompt | Model | Schema | Fallback |
+|---|---|---|---|
+| Natural-language mandate and owner | `gemini-3.5-flash-lite` | `mandateSchema` | Regex/keyword parser |
+| Task plus sanitized catalog | `gemini-3.5-flash-lite` | `shopperSchema` | Deterministic ranker and fixtures |
+| Mandate, cart, rules, and flags | `gemini-3.5-flash-lite` | `reviewerSchema` | Escalate to `ASK_HUMAN` |
 
 ## MCP, OpenAPI, and SDK
 
@@ -86,6 +110,7 @@ All AI outputs strictly adhere to Zod validation schemas. When `USE_LLM=false` o
 - `openapi.yaml` is the repository contract; `/api/openapi` serves the JSON form.
 - `src/sdk/steward.ts` is the typed HTTP client.
 - Claude Desktop example: `docs/claude_desktop_config.json`.
+- Postman collection: `docs/postman_collection.json`.
 
 ## Deployment
 
@@ -107,7 +132,14 @@ Required environment variables are `DATABASE_URL`, `DATABASE_URL_UNPOOLED`,
 1. **PayPal Sandbox Only:** Tested with Sandbox accounts; live production credentials are not supported.
 2. **Simulated Fulfilment:** Physical shipment tracking entries use a simulated carrier (`SIMULATED_CARRIER`), though tracking calls hit the real PayPal Sandbox Orders v2 tracking API.
 3. **Channel3 Fallback:** When `CHANNEL3_API_KEY` is not provided, high-quality sanitized fixtures represent product inventory.
-4. **Vault Gating:** When sandbox setup tokens return 403 (restricted permissions), the system gracefully requires buyer approval per order.
+4. **Vault:** Approve-once Vault payments are not available in this build; the buyer approves each order in PayPal Sandbox.
+
+## Sponsor and tooling map
+
+Channel3 supplies catalog search, AG Grid supplies the ledger UI, Render supplies
+deployment configuration, APIMatic informed API contract validation, and Postman
+supplies the API collection. AI SDK providers are used only for structured
+proposals, review, and evidence drafting.
 
 ## License
 
