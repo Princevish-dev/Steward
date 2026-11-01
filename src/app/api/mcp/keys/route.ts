@@ -1,8 +1,25 @@
 import { NextResponse } from "next/server";
 import { createMandateApiKey } from "@/core/mcp/keys";
-import { getMandate } from "@/core/domain/store";
+import { getMandate, listMandateApiKeysForOwner } from "@/core/domain/store";
 import { requireSessionOwner, ownsMandate } from "@/core/auth/session";
 import { rateLimit } from "@/core/http/rate-limit";
+
+export async function GET(request: Request) {
+  let owner: string;
+  try { owner = requireSessionOwner(request); } catch { return NextResponse.json({ error: "Authentication required." }, { status: 401 }); }
+  try {
+    const keys = await listMandateApiKeysForOwner(owner);
+    return NextResponse.json({ keys: keys.map((k) => ({
+      id: k.id,
+      mandateId: k.mandate_id,
+      keyPrefix: k.key_prefix,
+      createdAt: k.created_at,
+      revokedAt: k.revoked_at
+    })) });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to list API keys." }, { status: 500 });
+  }
+}
 
 export async function POST(request: Request) {
   const limited = rateLimit(request, "mcp-keys");

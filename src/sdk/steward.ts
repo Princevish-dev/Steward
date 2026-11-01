@@ -17,6 +17,8 @@ export function createStewardClient(options: StewardClientOptions = {}) {
     createOrder: (input: { runId: string }) => request("/api/paypal/orders", { method: "POST", body: JSON.stringify(input) }),
     capture: (input: { runId: string }) => request("/api/paypal/capture", { method: "POST", body: JSON.stringify(input) }),
     refund: (input: { runId: string }) => request("/api/paypal/refund", { method: "POST", body: JSON.stringify(input) }),
-    createMcpKey: (mandateId: string) => request("/api/mcp/keys", { method: "POST", body: JSON.stringify({ mandateId }) })
+    createMcpKey: (mandateId: string) => request("/api/mcp/keys", { method: "POST", body: JSON.stringify({ mandateId }) }),
+    exportLedger: (mandateId: string, format: "csv" | "json" = "json") =>
+      request(`/api/ledger/export?mandateId=${encodeURIComponent(mandateId)}&format=${format}`)
   };
 }

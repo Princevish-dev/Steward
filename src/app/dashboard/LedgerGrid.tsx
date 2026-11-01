@@ -26,17 +26,30 @@ function DecisionBadge({ value }: ICellRendererParams<LedgerGridRow, string>) {
 export default function LedgerGrid({
   rows,
   valid,
-  onVerify
+  onVerify,
+  mandateId
 }: {
   rows: LedgerGridRow[];
   valid: boolean | null;
   onVerify: () => void;
+  mandateId?: string | null;
 }) {
   const [quickFilter, setQuickFilter] = useState("");
   const [selected, setSelected] = useState<LedgerGridRow | null>(null);
   const [previewRows, setPreviewRows] = useState<LedgerGridRow[] | null>(null);
   const displayedRows = previewRows ?? rows;
   const displayedValid = previewRows ? false : valid;
+
+  function downloadExport(format: "csv" | "json") {
+    if (!mandateId) return;
+    const link = document.createElement("a");
+    link.href = `/api/ledger/export?mandateId=${encodeURIComponent(mandateId)}&format=${format}`;
+    link.download = `steward-ledger-${mandateId}.${format}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
   const columnDefs = useMemo<ColDef<LedgerGridRow>[]>(() => [
     { field: "runId", headerName: "Run group", sortable: true, flex: 1 },
     { field: "sequence", headerName: "Seq", sortable: true, width: 90 },
@@ -56,6 +69,24 @@ export default function LedgerGrid({
             {displayedValid === false ? "TAMPERED — INVALID" : displayedValid ? "VALID — VERIFIED" : "NOT VERIFIED"}
           </strong>
           <button type="button" onClick={() => { setPreviewRows(null); onVerify(); }} style={{ marginLeft: ".75rem", padding: ".45rem .7rem" }}>Verify</button>
+          <button
+            type="button"
+            onClick={() => downloadExport("csv")}
+            disabled={!mandateId || rows.length === 0}
+            title="Download ledger audit entries in CSV format"
+            style={{ marginLeft: ".5rem", padding: ".45rem .7rem" }}
+          >
+            Export CSV
+          </button>
+          <button
+            type="button"
+            onClick={() => downloadExport("json")}
+            disabled={!mandateId || rows.length === 0}
+            title="Download verifiable ledger audit packet in JSON format"
+            style={{ marginLeft: ".5rem", padding: ".45rem .7rem" }}
+          >
+            Export JSON
+          </button>
           <button type="button" onClick={() => setPreviewRows(rows.length ? rows.map((row, index) => index === 0 ? { ...row, entryHash: `${row.entryHash}-tampered` } : row) : rows)}
             disabled={rows.length === 0} style={{ marginLeft: ".5rem", padding: ".45rem .7rem" }}>
             Simulate tamper (preview)

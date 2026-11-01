@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { buildCartFromTask, buildScenarioCart, buildCartWithAi, buildCartFromTaskWithChannel3 } from "@/core/agents/shopper";
 import { evaluatePolicy } from "@/core/policy/engine";
 import type { PurchaseHistory } from "@/core/policy/types";
-import { getMandate, persistRun, createApproval, getPurchaseHistory } from "@/core/domain/store";
+import { getMandate, persistRun, createApproval, getPurchaseHistory, listRunsForOwner } from "@/core/domain/store";
 import { cartHash } from "@/core/payment/cart-hash";
 import { mandateStatusDecision } from "@/core/mandate/lifecycle";
 import { reviewPurchase } from "@/core/policy/reviewer";
@@ -10,6 +10,17 @@ import { useLlm } from "@/core/ai/client";
 import { recordLedgerEvent } from "@/core/ledger/store";
 import { requireSessionOwner, ownsMandate } from "@/core/auth/session";
 import { rateLimit } from "@/core/http/rate-limit";
+
+export async function GET(request: Request) {
+  let owner: string;
+  try { owner = requireSessionOwner(request); } catch { return NextResponse.json({ error: "Authentication required." }, { status: 401 }); }
+  try {
+    const runs = await listRunsForOwner(owner);
+    return NextResponse.json({ runs });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to list runs." }, { status: 500 });
+  }
+}
 
 export async function POST(request: Request) {
   const limited = rateLimit(request, "runs");

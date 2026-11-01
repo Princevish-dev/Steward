@@ -48,6 +48,8 @@ A complete guide to every screen, interactive element, backend route, and operat
 | `Reject` (Approval Inbox) | Button | Rejects pending human escalation | `PATCH /api/approvals` | Marks approval `REJECTED`, blocks order creation | REAL |
 | `Quick filter` (Ledger) | Text Input | Filters ledger grid rows by run ID, type, or decision | Client-side filter | Filters displayed AG Grid rows instantly | REAL |
 | `Verify` (Ledger) | Button | Recalculates SHA-256 hash chain from genesis to head | `GET /api/ledger/verify` | Displays `VALID — VERIFIED` in green if chain intact | REAL |
+| `Export CSV` | Button | Downloads verified audit ledger as standard CSV attachment | `GET /api/ledger/export?mandateId=...&format=csv` | Triggers download of `steward-ledger-<id>.csv` | REAL |
+| `Export JSON` | Button | Downloads complete audit packet with cryptographic verification in JSON | `GET /api/ledger/export?mandateId=...&format=json` | Triggers download of `steward-ledger-<id>.json` | REAL |
 | `Simulate tamper (preview)` | Button | Mutates in-memory hash of first entry to test tamper detection | Client-side preview | Ledger status switches to `TAMPERED — INVALID` in red | SIMULATED (In-memory preview) |
 | `Restore preview` (Ledger) | Button | Restores original stored ledger in grid view | Client-side state | Restores stored rows; status returns to `VALID — VERIFIED` | REAL |
 

@@ -1,10 +1,21 @@
 import { NextResponse } from "next/server";
 import { createSandboxOrder } from "@/core/paypal/orders";
-import { getRunContext, persistPaymentOrder, reservePaymentOrder } from "@/core/domain/store";
+import { getRunContext, persistPaymentOrder, reservePaymentOrder, listPaymentOrdersForOwner } from "@/core/domain/store";
 import { assertPaymentAllowed } from "@/core/payment/guard";
 import { cartHash } from "@/core/payment/cart-hash";
 import { requireSessionOwner } from "@/core/auth/session";
 import { getPublicBaseUrl } from "@/core/http/public-url";
+
+export async function GET(request: Request) {
+  let owner: string;
+  try { owner = requireSessionOwner(request); } catch { return NextResponse.json({ error: "Authentication required." }, { status: 401 }); }
+  try {
+    const orders = await listPaymentOrdersForOwner(owner);
+    return NextResponse.json({ orders });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to list orders." }, { status: 500 });
+  }
+}
 
 export async function POST(request: Request) {
   let owner: string;

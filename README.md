@@ -110,16 +110,17 @@ their latency and estimated cost.
 | Task plus sanitized catalog | `gemini-3.5-flash-lite` | `shopperSchema` | Deterministic ranker and fixtures |
 | Mandate, cart, rules, and flags | `gemini-3.5-flash-lite` | `reviewerSchema` | Escalate to `ASK_HUMAN` |
 
-## MCP, OpenAPI, and SDK
+## MCP, OpenAPI 3.1, and SDK
 
 - `POST /api/mcp` is an MCP Streamable HTTP endpoint.
 - Exactly four tools are exposed: `propose_purchase`, `get_mandate_status`,
   `list_my_purchases`, and `request_approval_status`.
 - `POST /api/mcp/keys` creates a one-time mandate-scoped key.
-- `openapi.yaml` is the repository contract; `/api/openapi` serves the JSON form.
+- `openapi.yaml` is the full OpenAPI 3.1.0 contract; `/api/openapi` serves the JSON form.
+- `GET /api/ledger/export` provides downloadable audit ledger exports in CSV and JSON formats.
 - `src/sdk/steward.ts` is the typed HTTP client.
 - Claude Desktop example: `docs/claude_desktop_config.json`.
-- Postman collection: `docs/postman_collection.json`.
+- Postman collection: `docs/postman_collection.json` (22 requests covering all 7 major workflow categories).
 
 ## Deployment
 

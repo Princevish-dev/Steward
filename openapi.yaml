@@ -1,18 +1,212 @@
-openapi: 3.0.3
+openapi: 3.1.0
 info:
   title: Steward API
   version: 1.0.0
-  description: Safety-first mandate purchasing API.
+  description: >
+    Safety-first autonomous purchasing API governed by explicit human mandates,
+    13 deterministic policy checks, and a tamper-evident SHA-256 audit ledger.
   license:
     name: MIT
     url: https://opensource.org/license/mit
 servers:
-  - url: https://steward.onrender.com
-security: []
+  - url: https://steward-w7pk.onrender.com
+    description: Production Sandbox Deployment
+  - url: http://localhost:3000
+    description: Local Development Server
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: steward_session
+      description: Signed HMAC owner session cookie.
+    mcpApiKey:
+      type: apiKey
+      in: header
+      name: x-steward-api-key
+      description: SHA-256 hashed mandate-scoped API key.
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+    Mandate:
+      type: object
+      required: [id, owner, purpose, currency, period, caps, status, expiresAt]
+      properties:
+        id: { type: string }
+        owner: { type: string, format: email }
+        purpose: { type: string }
+        currency: { type: string, default: USD }
+        period:
+          type: object
+          required: [type, budget]
+          properties:
+            type: { type: string, enum: [monthly, per_transaction] }
+            budget: { type: number }
+        caps:
+          type: object
+          properties:
+            perItem: { type: [number, "null"] }
+            perTransaction: { type: [number, "null"] }
+            maxQuantityPerItem: { type: integer, default: 4 }
+        askAbove: { type: [number, "null"] }
+        categories:
+          type: array
+          items:
+            type: string
+            enum: [office_supplies, coffee_tea, groceries_pantry, electronics_accessories, books, cleaning_supplies, other]
+        merchants:
+          type: object
+          properties:
+            allow: { type: array, items: { type: string } }
+            deny: { type: array, items: { type: string } }
+        velocity:
+          type: object
+          properties:
+            maxAutoPurchasesPer24h: { type: integer, default: 2 }
+        status: { type: string, enum: [DRAFT, ACTIVE, REVOKED] }
+        expiresAt: { type: string, format: date-time }
 paths:
+  /api/health:
+    get:
+      summary: Health check
+      description: Returns service status, node environment, and database pool state.
+      responses:
+        "200":
+          description: Service is healthy.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  db: { type: string, example: connected }
+
+  /api/demo:
+    post:
+      summary: Initialize demo environment
+      description: Seeds active mandate, sample runs, approvals, and returns signed session cookie.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                owner: { type: string, format: email, default: judge@example.com }
+      responses:
+        "200":
+          description: Demo data seeded and session cookie set.
+
+  /api/auth/magic-link:
+    post:
+      summary: Issue magic link session token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "200":
+          description: Magic link issued.
+    get:
+      summary: Consume magic link token and set session cookie
+      parameters:
+        - in: query
+          name: token
+          required: true
+          schema: { type: string }
+      responses:
+        "302":
+          description: Redirects to dashboard with session cookie set.
+
+  /api/auth/logout:
+    post:
+      summary: Clear session cookie
+      responses:
+        "200":
+          description: Session cleared.
+
+  /api/mandates/draft:
+    post:
+      summary: Parse natural language instructions into a mandate draft
+      description: Converts text instructions using AI (Gemini/Claude) with deterministic regex fallback.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [owner, instructions]
+              properties:
+                owner: { type: string, format: email }
+                instructions: { type: string }
+      responses:
+        "200":
+          description: Parsed mandate draft or clarifications.
+
+  /api/mandates:
+    post:
+      summary: Create or persist a mandate definition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Mandate"
+      responses:
+        "200":
+          description: Mandate persisted.
+
+  /api/mandates/{id}:
+    get:
+      summary: Fetch mandate by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Mandate found.
+        "404":
+          description: Mandate not found.
+
+  /api/mandates/{id}/confirm:
+    post:
+      summary: Activate a confirmed mandate
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Mandate activated and status set to ACTIVE.
+
+  /api/mandates/{id}/revoke:
+    post:
+      summary: Emergency kill switch
+      description: Revokes mandate immediately. Appends MANDATE_REVOKED to the audit ledger.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Mandate revoked.
+
   /api/runs:
     post:
-      summary: Evaluate a purchase task
+      summary: Propose cart and evaluate deterministic policy
+      description: Shopper finds items; 13 deterministic policy rules evaluate limits before payment.
       requestBody:
         required: true
         content:
@@ -23,15 +217,46 @@ paths:
               properties:
                 mandateId: { type: string }
                 task: { type: string }
-                scenario: { type: string, enum: [within, ask, over-cap, hostile] }
+                scenario:
+                  type: string
+                  enum: [within, ask, over-cap, hostile]
       responses:
-        "200": { description: Policy decision and cart }
+        "200":
+          description: Policy decision (AUTO_APPROVE, ASK_HUMAN, or BLOCK), cart items, and rule results.
+
   /api/approvals:
-    get: { summary: List approval requests, responses: { "200": { description: Approval list } } }
-    patch: { summary: Approve or reject a request, responses: { "200": { description: Updated approval } } }
+    get:
+      summary: List pending human review requests
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: List of pending approval requests.
+    patch:
+      summary: Resolve a human approval request (Approve / Reject)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [approvalId, action]
+              properties:
+                approvalId: { type: string, format: uuid }
+                action: { type: string, enum: [APPROVE, REJECT] }
+                reason: { type: string }
+      responses:
+        "200":
+          description: Approval resolved and recorded in ledger.
+
   /api/paypal/orders:
     post:
-      summary: Create a gated PayPal order
+      summary: Create a gated PayPal Sandbox order
+      description: Validates that server-side decision allows payment before calling PayPal Orders v2 API.
+      security:
+        - sessionCookie: []
       requestBody:
         required: true
         content:
@@ -39,25 +264,247 @@ paths:
             schema:
               type: object
               required: [runId]
-              properties: { runId: { type: string } }
+              properties:
+                runId: { type: string }
       responses:
-        "200": { description: PayPal order }
-        "403": { description: Payment blocked }
+        "200":
+          description: PayPal order created with approvalUrl for sandbox buyer checkout.
+        "403":
+          description: Payment blocked by policy or unapproved state.
+
   /api/paypal/capture:
-    post: { summary: Capture the order for a run, responses: { "200": { description: Capture result } } }
-  /api/paypal/refund:
-    post: { summary: Refund the captured order for a run, responses: { "200": { description: Refund result } } }
-  /api/ledger/verify:
-    get: { summary: Verify the tamper-evident ledger, responses: { "200": { description: Verification result } } }
-  /api/mcp:
     post:
-      summary: MCP Streamable HTTP endpoint
+      summary: Capture an approved PayPal order
+      description: Captures payment, verifies idempotency, posts simulated carrier tracking, and writes to ledger.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [runId]
+              properties:
+                runId: { type: string }
+      responses:
+        "200":
+          description: Capture completed with captureId and tracking details.
+
+  /api/paypal/refund:
+    post:
+      summary: Issue refund for a captured payment
+      description: Calls live PayPal Sandbox /v2/payments/captures/{id}/refund.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [runId]
+              properties:
+                runId: { type: string }
+      responses:
+        "200":
+          description: Refund issued and REFUND_ISSUED logged to ledger.
+
+  /api/paypal/vault:
+    post:
+      summary: Create a Vault merchant-initiated charge
+      description: Honestly gated with HTTP 410 because standard sandbox developer accounts lack Vault permissions.
+      responses:
+        "410":
+          description: Vault approval-once payments are not available in this build.
+
+  /api/paypal/health:
+    get:
+      summary: Check PayPal Sandbox OAuth connectivity
+      responses:
+        "200":
+          description: PayPal Sandbox OAuth token generated successfully.
+
+  /api/paypal/return:
+    get:
+      summary: Return redirect handler after buyer checkout in PayPal Sandbox
+      parameters:
+        - in: query
+          name: token
+          schema: { type: string }
+        - in: query
+          name: PayerID
+          schema: { type: string }
+      responses:
+        "302":
+          description: Redirects back to dashboard with order approval query params.
+
+  /api/paypal/webhook:
+    post:
+      summary: PayPal Webhook endpoint
+      description: Verifies PayPal cryptographic signature via /v1/notifications/verify-webhook-signature before logging.
+      parameters:
+        - in: header
+          name: paypal-transmission-id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: paypal-transmission-sig
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Webhook event processed and deduplicated idempotently.
+        "400":
+          description: Invalid signature or missing verification headers.
+
+  /api/paypal/webhook/replay:
+    post:
+      summary: Simulate dispute webhook event (Development only)
+      description: Replays CUSTOMER.DISPUTE.CREATED event into the state machine and ledger.
+      responses:
+        "200":
+          description: Simulated dispute event appended to ledger.
+
+  /api/disputes/advocate:
+    post:
+      summary: Generate structured dispute evidence packet
+      description: AI Dispute Advocate extracts facts from immutable ledger, tracking, and order history.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [runId]
+              properties:
+                runId: { type: string }
+      responses:
+        "200":
+          description: Structured dispute draft with recommendation and timeline.
+
+  /api/ledger/verify:
+    get:
+      summary: Read and verify the hash-chained audit ledger
+      security:
+        - sessionCookie: []
+      parameters:
+        - in: query
+          name: mandateId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Verified ledger entries and cryptographic verification status.
+    post:
+      summary: Validate an arbitrary array of ledger entries for tampering
+      security:
+        - sessionCookie: []
+      parameters:
+        - in: query
+          name: mandateId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Verification outcome ({ valid: true } or { valid: false, invalidSequence }).
+
+  /api/ledger/export:
+    get:
+      summary: Download audit ledger in CSV or JSON format
+      description: Exports immutable SHA-256 ledger entries with verification headers.
+      security:
+        - sessionCookie: []
+      parameters:
+        - in: query
+          name: mandateId
+          required: true
+          schema: { type: string }
+        - in: query
+          name: format
+          required: false
+          schema:
+            type: string
+            enum: [csv, json]
+            default: json
+      responses:
+        "200":
+          description: Downloadable CSV or JSON file attachment.
+          content:
+            text/csv:
+              schema: { type: string }
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mandateId: { type: string }
+                  count: { type: integer }
+                  verification: { type: object }
+                  entries: { type: array }
+
+  /api/mcp:
+    get:
+      summary: Discover available MCP tools
+      responses:
+        "200":
+          description: List of MCP tools exposed over Streamable HTTP.
+    post:
+      summary: Streamable HTTP MCP JSON-RPC tool invocation
+      security:
+        - mcpApiKey: []
       parameters:
         - in: header
           name: x-steward-api-key
           required: true
           schema: { type: string }
       responses:
-        "200": { description: MCP JSON-RPC response }
-        "401": { description: Invalid API key }
-        "403": { description: Mandate mismatch }
+        "200":
+          description: JSON-RPC MCP result.
+        "401":
+          description: Missing or invalid mandate API key.
+        "403":
+          description: Key is not authorized for requested mandate.
+
+  /api/mcp/keys:
+    post:
+      summary: Generate a SHA-256 hashed mandate-scoped API key
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mandateId]
+              properties:
+                mandateId: { type: string }
+      responses:
+        "200":
+          description: Returns plain API key (displayed once) and stores hash in PostgreSQL.
+
+  /api/redteam:
+    post:
+      summary: Evaluate adversarial prompt injection attack fixture
+      description: Tests quarantining and policy enforcement against 5 hostile product text payloads.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fixtureId]
+              properties:
+                fixtureId: { type: string }
+      responses:
+        "200":
+          description: Evaluated safety timeline and BLOCK decision.
+
+  /api/openapi:
+    get:
+      summary: Fetch OpenAPI 3.1.0 specification
+      responses:
+        "200":
+          description: Complete OpenAPI 3.1.0 JSON representation.

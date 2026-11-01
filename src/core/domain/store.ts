@@ -27,12 +27,87 @@ export async function getMandate(id: string): Promise<Mandate | null> {
   return result.rows[0]?.definition as Mandate | null;
 }
 
-export async function listMandatesForOwner(owner: string): Promise<string[]> {
+export async function listMandatesForOwner(owner: string): Promise<Array<{ id: string; owner: string; purpose: string; status: string; period: { type: string; budget: number }; caps: { perItem: number | null; perTransaction: number | null; maxQuantityPerItem: number }; askAbove: number | null; categories: string[]; expiresAt: string }>> {
   const result = await getDatabasePool().query(
-    "SELECT id FROM mandates WHERE owner = $1 ORDER BY created_at ASC",
+    `SELECT definition FROM mandates WHERE owner = $1 ORDER BY created_at ASC`,
     [owner]
   );
-  return result.rows.map((row) => String(row.id));
+  return result.rows.map((row) => row.definition as { id: string; owner: string; purpose: string; status: string; period: { type: string; budget: number }; caps: { perItem: number | null; perTransaction: number | null; maxQuantityPerItem: number }; askAbove: number | null; categories: string[]; expiresAt: string });
+}
+
+export async function listRunsForOwner(owner: string) {
+  const result = await getDatabasePool().query(
+    `SELECT r.id AS run_id, r.mandate_id, r.task, r.decision, r.cart, r.created_at,
+            m.status AS mandate_status,
+            COALESCE((SELECT SUM((item->>'unitPrice')::numeric * (item->>'quantity')::numeric)
+                      FROM jsonb_array_elements(r.cart->'items') item), 0) AS total
+     FROM runs r
+     JOIN mandates m ON m.id = r.mandate_id
+     WHERE m.owner = $1
+     ORDER BY r.created_at DESC LIMIT 200`,
+    [owner]
+  );
+  return result.rows;
+}
+
+export async function listPaymentOrdersForOwner(owner: string) {
+  const result = await getDatabasePool().query(
+    `SELECT po.id, po.run_id, po.amount, po.currency, po.status, po.approval_url, po.capture_id,
+            po.tracking_carrier, po.tracking_number, po.tracking_status, po.created_at, po.updated_at,
+            r.mandate_id, r.task AS run_task, r.decision AS run_decision
+     FROM payment_orders po
+     JOIN runs r ON r.id = po.run_id
+     JOIN mandates m ON m.id = r.mandate_id
+     WHERE m.owner = $1
+     ORDER BY po.created_at DESC LIMIT 200`,
+    [owner]
+  );
+  return result.rows;
+}
+
+export async function listRefundsForOwner(owner: string) {
+  const result = await getDatabasePool().query(
+    `SELECT r.id AS refund_id, r.order_id, r.amount, r.status, r.created_at, r.response,
+            po.run_id, po.amount AS order_amount
+     FROM refunds r
+     JOIN payment_orders po ON po.id = r.order_id
+     JOIN runs ON runs.id = po.run_id
+     JOIN mandates m ON m.id = runs.mandate_id
+     WHERE m.owner = $1
+     ORDER BY r.created_at DESC LIMIT 200`,
+    [owner]
+  );
+  return result.rows;
+}
+
+export async function listTrackingForOwner(owner: string) {
+  const result = await getDatabasePool().query(
+    `SELECT po.id AS order_id, po.run_id, po.tracking_carrier, po.tracking_number, po.tracking_status,
+            po.created_at, po.updated_at,
+            r.mandate_id, r.task AS run_task
+     FROM payment_orders po
+     JOIN runs r ON r.id = po.run_id
+     JOIN mandates m ON m.id = r.mandate_id
+     WHERE m.owner = $1 AND po.tracking_carrier IS NOT NULL
+     ORDER BY po.created_at DESC LIMIT 200`,
+    [owner]
+  );
+  return result.rows;
+}
+
+export async function listDisputesForOwner(owner: string) {
+  const result = await getDatabasePool().query(
+    `SELECT d.id, d.order_id AS order_id, d.status, d.created_at, d.payload,
+            po.run_id, po.amount AS order_amount
+     FROM disputes d
+     JOIN payment_orders po ON po.id = d.order_id
+     JOIN runs ON runs.id = po.run_id
+     JOIN mandates m ON m.id = runs.mandate_id
+     WHERE m.owner = $1
+     ORDER BY d.created_at DESC LIMIT 200`,
+    [owner]
+  );
+  return result.rows;
 }
 
 export async function setMandateStatus(id: string, status: "ACTIVE" | "REVOKED"): Promise<Mandate | null> {
@@ -282,4 +357,16 @@ export async function persistDispute(input: { id: string; orderId?: string; stat
      ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, payload = EXCLUDED.payload, updated_at = now()`,
     [input.id, input.orderId ?? null, input.status, JSON.stringify(input.payload)]
   );
+}
+
+export async function listMandateApiKeysForOwner(owner: string) {
+  const result = await getDatabasePool().query(
+    `SELECT k.id, k.mandate_id, k.key_prefix, k.created_at, k.revoked_at, m.owner
+     FROM mandate_api_keys k
+     JOIN mandates m ON m.id = k.mandate_id
+     WHERE m.owner = $1
+     ORDER BY k.created_at DESC LIMIT 200`,
+    [owner]
+  );
+  return result.rows;
 }

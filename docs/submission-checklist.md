@@ -11,4 +11,7 @@
   labelled in the UI and documentation.
 - [ ] README contains quick start, screenshots, API maps, safety model, MCP
   configuration, tests, limitations, and license.
+- [ ] OpenAPI 3.1.0 contract verified and served at /api/openapi.
+- [ ] Audit ledger export verified in CSV and JSON formats.
+- [ ] Postman collection covers all 7 major workflow categories.
 - [ ] CI is green on the submission commit.

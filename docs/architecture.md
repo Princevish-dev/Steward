@@ -147,6 +147,7 @@ Any modification to past entries breaks subsequent hashes, detectable by `/api/l
 | `/api/paypal/webhook/replay` | POST | Rate limited | Dev-only simulation of dispute webhook |
 | `/api/disputes/advocate` | POST | Session ownership | Generates factual dispute defense using ledger |
 | `/api/ledger/verify` | GET | Mandate scoped | Cryptographically verifies SHA-256 hash chain |
+| `/api/ledger/export` | GET | Session ownership | Exports ledger in CSV or JSON with verification headers |
 | `/api/mcp` | POST | Mandate API Key | External Model Context Protocol server (4 tools) |
 | `/api/mcp/keys` | POST | Session ownership | Issues mandate-scoped API key |
 | `/api/redteam` | POST | Rate limited | Evaluates adversarial attack fixtures |
