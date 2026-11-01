@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
+import { getPublicBaseUrl } from "@/core/http/public-url";
 
-export async function GET() {
+export async function GET(request: Request) {
   return NextResponse.json({
     openapi: "3.0.3",
     info: { title: "Steward API", version: "1.0.0", description: "Safety-first mandate purchasing API." },
-    servers: [{ url: process.env.APP_BASE_URL ?? "http://localhost:3000" }],
+    servers: [{ url: getPublicBaseUrl(request) }],
     paths: {
       "/api/runs": { post: { summary: "Evaluate a purchase task", requestBody: { required: true }, responses: { "200": { description: "Policy decision and cart" } } } },
       "/api/approvals": { get: { summary: "List human approvals" }, patch: { summary: "Approve or reject a pending run" } },

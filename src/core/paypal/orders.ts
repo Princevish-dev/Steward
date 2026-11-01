@@ -1,5 +1,6 @@
 import { idempotencyKey } from "@/core/ledger/append";
 import { paypalRequest } from "@/core/paypal/client";
+import { getPublicBaseUrl } from "@/core/http/public-url";
 
 export type OrderRequest = {
   runId: string;
@@ -7,6 +8,7 @@ export type OrderRequest = {
   amount: number;
   currency: "USD";
   vaultToken: string;
+  publicBaseUrl?: string;
 };
 
 export type PayPalOrderRequest = {
@@ -39,6 +41,7 @@ export function toPayPalOrderRequest(request: OrderRequest): PayPalOrderRequest 
 }
 
 export async function createSandboxOrder(request: OrderRequest): Promise<PayPalCreatedOrder> {
+  if (!request.publicBaseUrl) throw new Error("A public base URL is required for PayPal redirects.");
   const order = await paypalRequest<PayPalCreatedOrder>("/v2/checkout/orders", {
     method: "POST",
     headers: { "PayPal-Request-Id": idempotencyKey(request.runId, request.cartHash) },
@@ -54,8 +57,8 @@ export async function createSandboxOrder(request: OrderRequest): Promise<PayPalC
       application_context: {
         brand_name: "Steward Sandbox",
         user_action: "PAY_NOW",
-        return_url: `${process.env.APP_BASE_URL ?? "http://localhost:3000"}/api/paypal/return?runId=${encodeURIComponent(request.runId)}`,
-        cancel_url: `${process.env.APP_BASE_URL ?? "http://localhost:3000"}/dashboard?paypal=cancelled`
+        return_url: `${request.publicBaseUrl}/api/paypal/return?runId=${encodeURIComponent(request.runId)}`,
+        cancel_url: `${request.publicBaseUrl}/dashboard?paypal=cancelled`
       }
     })
   });

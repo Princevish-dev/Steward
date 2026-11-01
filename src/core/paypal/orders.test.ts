@@ -8,7 +8,8 @@ describe("PayPal order boundary", () => {
       cartHash: "cart_1",
       amount: 18.99,
       currency: "USD",
-      vaultToken: "vault_token"
+      vaultToken: "vault_token",
+      publicBaseUrl: "https://steward.example"
     });
     expect(request.amount).toBe("18.99");
     expect(request.currency_code).toBe("USD");

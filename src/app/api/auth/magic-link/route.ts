@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSessionToken, sessionCookie } from "@/core/auth/session";
+import { getPublicBaseUrl } from "@/core/http/public-url";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null) as { email?: unknown } | null;
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   const token = new URL(request.url).searchParams.get("token");
   if (!token) return NextResponse.json({ error: "Token is required." }, { status: 422 });
-  const response = NextResponse.redirect(new URL("/dashboard", request.url));
+  const response = NextResponse.redirect(`${getPublicBaseUrl(request)}/dashboard`);
   response.cookies.set(sessionCookie(token));
   return response;
 }

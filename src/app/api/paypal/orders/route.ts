@@ -4,6 +4,7 @@ import { getRunContext, persistPaymentOrder, reservePaymentOrder } from "@/core/
 import { assertPaymentAllowed } from "@/core/payment/guard";
 import { cartHash } from "@/core/payment/cart-hash";
 import { requireSessionOwner } from "@/core/auth/session";
+import { getPublicBaseUrl } from "@/core/http/public-url";
 
 export async function POST(request: Request) {
   let owner: string;
@@ -54,7 +55,8 @@ export async function POST(request: Request) {
       cartHash: computedCartHash,
       amount,
       currency: "USD",
-      vaultToken: "approval-required"
+      vaultToken: "approval-required",
+      publicBaseUrl: getPublicBaseUrl(request)
     });
     const approvalUrl = order.links?.find((link) => link.rel === "approve" || link.rel === "payer-action")?.href ?? null;
     await persistPaymentOrder({
