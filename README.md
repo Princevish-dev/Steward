@@ -16,7 +16,16 @@ becomes an explicit budget and cap; fixture-backed Channel3 product data becomes
 cart; deterministic rules decide `AUTO_APPROVE`, `ASK_HUMAN`, or `BLOCK`; and every
 transition is recorded in a tamper-evident PostgreSQL ledger.
 
-> **Demo label:** PayPal Sandbox + fixture-backed Channel3 demo, simulated fulfilment.
+> **Demo label:** PayPal Sandbox + Channel3 live/fixture catalog, simulated fulfilment.
+
+## Documentation Index
+
+- [UI & Workflow Guide](./docs/UI-GUIDE.md) — Comprehensive directory of every screen, button, route, and expected result
+- [Architecture Specification](./docs/architecture.md) — System architecture, Mermaid sequence flows, security model, and API table
+- [Threat Model (STRIDE)](./docs/threat-model.md) — Assets, threat actors, attack vectors, mitigations, and residual risks
+- [Video Demo Script](./docs/video-script.md) — 2:50 timed judge demo walkthrough
+- [Postman Collection](./docs/postman_collection.json) — Ready-to-import API tests
+- [Claude Desktop MCP Config](./docs/claude_desktop_config.json) — External agent integration
 
 ## Five-minute quick start
 
@@ -65,13 +74,13 @@ The visible banner states the current catalog and fulfilment mode:
 
 | Steward route | PayPal operation |
 |---|---|
-| `/api/paypal/orders` | Create Sandbox buyer-approved order |
-| `/api/paypal/capture` | Capture the run-bound order |
-| `/api/paypal/vault` | Explicitly unavailable; buyer approves each Sandbox order |
-| `/api/paypal/refund` | Refund the persisted capture |
-| `/api/paypal/webhook` | Verify webhook signature and record event |
+| `/api/paypal/orders` | Create Sandbox buyer-approved order (Orders API v2) |
+| `/api/paypal/capture` | Capture the run-bound order (Orders API v2) |
+| `/api/paypal/vault` | Returns 410; buyer approves each order; Vault requires merchant permissions |
+| `/api/paypal/refund` | Refund the persisted capture (Payments API v2) |
+| `/api/paypal/webhook` | Verify webhook signature (Notifications API) and record event |
 | `/api/paypal/webhook/replay` | Development-only simulated dispute replay |
-| `/api/disputes/advocate` | Generate evidence-only Dispute Advocate draft |
+| `/api/disputes/advocate` | Generate evidence-only Dispute Advocate draft (Prompt A4) |
 
 ## AI and fixture map
 
@@ -124,15 +133,15 @@ The Render blueprint uses the existing Neon `DATABASE_URL` and
 Required environment variables are `DATABASE_URL`, `DATABASE_URL_UNPOOLED`,
 `DATABASE_SSL`, `PAYPAL_ENVIRONMENT`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`,
 `PAYPAL_WEBHOOK_ID`, `CHANNEL3_API_KEY`, `CHANNEL3_API_URL`, `VAULT_ENC_KEY`, `SESSION_SECRET`,
-`ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `USE_LLM`, and `APP_BASE_URL`.
+`ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `GOOGLE_GENERATIVE_AI_API_KEY`, `GEMINI_MODEL`, `USE_LLM`, and `APP_BASE_URL`.
 `GET /api/health` is the keep-warm target.
 
-## Limitations
+## Limitations & Truth in Advertising
 
 1. **PayPal Sandbox Only:** Tested with Sandbox accounts; live production credentials are not supported.
 2. **Simulated Fulfilment:** Physical shipment tracking entries use a simulated carrier (`SIMULATED_CARRIER`), though tracking calls hit the real PayPal Sandbox Orders v2 tracking API.
 3. **Channel3 Fallback:** When `CHANNEL3_API_KEY` is not provided, high-quality sanitized fixtures represent product inventory.
-4. **Vault:** Approve-once Vault payments are not available in this build; the buyer approves each order in PayPal Sandbox.
+4. **Vault Permission Decision:** The PayPal Sandbox application returns `403 NOT_AUTHORIZED` on `/v3/vault/setup-tokens`. Accordingly, approve-once Vault payments are not claimed or supported in this build; the buyer explicitly approves each order in PayPal Sandbox.
 
 ## Sponsor and tooling map
 
