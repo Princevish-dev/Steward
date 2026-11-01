@@ -24,18 +24,39 @@ export function sanitizeUntrustedText(value: string, maxLength = 400): string {
   return value.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim().slice(0, maxLength);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object");
+}
+
 export function mapChannel3Product(value: Record<string, unknown>): Product {
-  const rawAvailability = String(value.availability ?? value.stock ?? "").toLowerCase();
-  const rawCategory = String(value.category ?? "").toLowerCase() as Category;
+  const rawCategoryValue = value.category;
+  const rawCategory = String(
+    isRecord(rawCategoryValue)
+      ? rawCategoryValue.slug ?? rawCategoryValue.title ?? ""
+      : rawCategoryValue ?? ""
+  ).toLowerCase() as Category;
+  const offers = Array.isArray(value.offers) ? value.offers.filter(isRecord) : [];
+  const offer = offers.find((item) => {
+    const price = isRecord(item.price) ? item.price : null;
+    const availability = String(item.availability ?? "").toLowerCase();
+    return price
+      && Number.isFinite(Number(price.price))
+      && String(price.currency ?? "").toUpperCase() === "USD"
+      && (availability === "instock" || availability === "in_stock" || availability === "in stock");
+  });
+  const offerPrice = isRecord(offer?.price) ? offer.price.price : undefined;
+  const rawAvailability = String(offer?.availability ?? value.availability ?? value.stock ?? "").toLowerCase();
   return {
     id: String(value.id ?? value.productId ?? `prod_${crypto.randomUUID().slice(0, 8)}`),
     title: sanitizeUntrustedText(String(value.title ?? value.name ?? "Untitled product")),
     description: sanitizeUntrustedText(String(value.description ?? "")),
-    merchant: sanitizeUntrustedText(String(value.merchant ?? value.seller ?? "Unknown merchant")),
-    price: Number(value.price ?? value.unitPrice ?? 0),
+    merchant: sanitizeUntrustedText(String(value.merchant ?? value.seller ?? offer?.domain ?? "Unknown merchant")),
+    price: Number(offerPrice ?? value.price ?? value.unitPrice ?? 0),
     currency: "USD",
-    availability: rawAvailability === "in_stock" || rawAvailability === "in stock" || rawAvailability === "available" ? "in_stock" : "out_of_stock",
-    url: String(value.url ?? value.productUrl ?? ""),
+    availability: rawAvailability === "instock" || rawAvailability === "in_stock" || rawAvailability === "in stock" || rawAvailability === "available"
+      ? "in_stock"
+      : "out_of_stock",
+    url: String(offer?.url ?? value.url ?? value.productUrl ?? ""),
     category: categories.has(rawCategory) ? rawCategory : "other"
   };
 }
@@ -52,7 +73,10 @@ export async function searchProductsWithSource(
   options: Channel3Options = {}
 ): Promise<{ products: Product[]; source: Channel3Source }> {
   const apiKey = options.apiKey ?? process.env.CHANNEL3_API_KEY;
-  const apiUrl = options.apiUrl ?? process.env.CHANNEL3_API_URL ?? "https://api.trychannel3.com/v1/products/search";
+  const configuredUrl = options.apiUrl ?? process.env.CHANNEL3_API_URL ?? "https://api.trychannel3.com/v1";
+  const apiUrl = configuredUrl.endsWith("/search")
+    ? configuredUrl
+    : `${configuredUrl.replace(/\/$/, "")}/search`;
   if (!apiKey) {
     return { products: searchProducts(query, maxPrice), source: "fixture" };
   }
@@ -62,38 +86,32 @@ export async function searchProductsWithSource(
     return { products: cached.products, source: "real" };
   }
   try {
-    const separator = apiUrl.includes("?") ? "&" : "?";
-    const response = await (options.fetcher ?? fetch)(
-      `${apiUrl}${separator}q=${encodeURIComponent(query)}${maxPrice === undefined ? "" : `&maxPrice=${maxPrice}`}`,
-      {
-        headers: {
-          authorization: `Bearer ${apiKey}`,
-          accept: "application/json"
-        }
-      }
-    );
+    const response = await (options.fetcher ?? fetch)(apiUrl, {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        accept: "application/json",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        query,
+        limit: 20,
+        ...(maxPrice === undefined ? {} : { filters: { price: { max_price: maxPrice } } })
+      })
+    });
     if (!response.ok) {
       console.warn(`Channel3 API returned ${response.status}, falling back to fixtures.`);
       return { products: searchProducts(query, maxPrice), source: "fixture" };
     }
-    const body = await response.json() as { products?: unknown[]; results?: unknown[]; items?: unknown[] };
-    const rawList = Array.isArray(body.products)
-      ? body.products
-      : Array.isArray(body.results)
-        ? body.results
-        : Array.isArray(body.items)
-          ? body.items
-          : [];
-    const mapped = rawList
-      .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+    const body = await response.json() as { products?: unknown[] };
+    const mapped = (Array.isArray(body.products) ? body.products : [])
+      .filter(isRecord)
       .map(mapChannel3Product)
       .filter((product) => product.availability === "in_stock" && (maxPrice === undefined || product.price <= maxPrice));
 
     if (mapped.length === 0) {
-      // Fallback to fixtures if external search returned empty
       return { products: searchProducts(query, maxPrice), source: "fixture" };
     }
-
     cache.set(key, { products: mapped, expiresAt: Date.now() + 10 * 60 * 1000 });
     return { products: mapped, source: "real" };
   } catch (error) {
