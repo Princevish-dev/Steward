@@ -34,6 +34,9 @@ export default function LedgerGrid({
 }) {
   const [quickFilter, setQuickFilter] = useState("");
   const [selected, setSelected] = useState<LedgerGridRow | null>(null);
+  const [previewRows, setPreviewRows] = useState<LedgerGridRow[] | null>(null);
+  const displayedRows = previewRows ?? rows;
+  const displayedValid = previewRows ? false : valid;
   const columnDefs = useMemo<ColDef<LedgerGridRow>[]>(() => [
     { field: "runId", headerName: "Run group", sortable: true, flex: 1 },
     { field: "sequence", headerName: "Seq", sortable: true, width: 90 },
@@ -50,14 +53,22 @@ export default function LedgerGrid({
           <input aria-label="Quick filter ledger" value={quickFilter} onChange={(event) => setQuickFilter(event.target.value)}
             placeholder="Quick filter" style={{ width: 150, padding: ".45rem" }} />
           <strong style={{ color: valid === false ? "#ff7b8b" : valid ? "#6ee7b7" : "#b8c0d9" }}>
-            {valid === false ? "TAMPERED — INVALID" : valid ? "VALID — VERIFIED" : "NOT VERIFIED"}
+            {displayedValid === false ? "TAMPERED — INVALID" : displayedValid ? "VALID — VERIFIED" : "NOT VERIFIED"}
           </strong>
-          <button type="button" onClick={onVerify} style={{ marginLeft: ".75rem", padding: ".45rem .7rem" }}>Verify</button>
+          <button type="button" onClick={() => { setPreviewRows(null); onVerify(); }} style={{ marginLeft: ".75rem", padding: ".45rem .7rem" }}>Verify</button>
+          <button type="button" onClick={() => setPreviewRows(rows.length ? rows.map((row, index) => index === 0 ? { ...row, entryHash: `${row.entryHash}-tampered` } : row) : rows)}
+            disabled={rows.length === 0} style={{ marginLeft: ".5rem", padding: ".45rem .7rem" }}>
+            Simulate tamper (preview)
+          </button>
+          {previewRows && <button type="button" onClick={() => setPreviewRows(null)} style={{ marginLeft: ".5rem", padding: ".45rem .7rem" }}>
+            Restore preview
+          </button>}
         </div>
       </div>
+      {previewRows && <p role="status" style={{ color: "#f0c674" }}>Demo preview only: the stored ledger was not changed.</p>}
       <div className="ag-theme-quartz" style={{ height: 420, width: "100%" }}>
         <AgGridReact<LedgerGridRow>
-          rowData={rows}
+          rowData={displayedRows}
           columnDefs={columnDefs}
           theme={themeQuartz}
           quickFilterText={quickFilter}

@@ -378,6 +378,17 @@ export default function DashboardPage() {
         Create mandate MCP key
       </button>
       {mcpKey && <p role="status">Copy this key now; it is shown once: <code>{mcpKey}</code></p>}
+      <section aria-label="MCP tools" style={{ marginTop: "1.5rem", border: "1px solid #293252", borderRadius: 8, padding: "1rem", maxWidth: 760 }}>
+        <h2>MCP tools</h2>
+        <p>External agents can use these mandate-scoped tools:</p>
+        <ul>
+          <li><code>propose_purchase</code></li>
+          <li><code>get_mandate_status</code></li>
+          <li><code>list_my_purchases</code></li>
+          <li><code>request_approval_status</code></li>
+        </ul>
+        <p style={{ color: "#b8c0d9" }}>Use the mandate key with the MCP endpoint. The same deterministic policy and payment gate apply.</p>
+      </section>
       {paypalStatus && <p role="status">{paypalStatus}</p>}
       {approvedOrderId && (
         <section style={{ marginTop: "2rem", border: "1px solid #6ee7b7", borderRadius: 10, padding: "1rem" }}>
@@ -431,10 +442,11 @@ export default function DashboardPage() {
                 <div style={{ display: "flex", gap: ".5rem", flexWrap: "wrap", marginTop: ".75rem" }}>
                   <button type="button" onClick={refundPayment}>Refund captured payment</button>
                   <button type="button" onClick={draftDispute}>Draft dispute evidence</button>
-                  {process.env.NODE_ENV !== "production" && <button type="button" onClick={replayDispute}>Replay SIMULATED dispute</button>}
+                  <button type="button" onClick={replayDispute}>Simulate dispute (development only)</button>
                 </div>
                 {refundStatus && <p role="status">{refundStatus}</p>}
                 {simulationStatus && <p role="status">{simulationStatus}</p>}
+                <p style={{ color: "#b8c0d9" }}>Dispute Advocate uses available ledger facts only; unknown facts are shown as “not available”.</p>
                 {disputeDraft && <aside aria-label="Dispute Advocate draft"><b>Dispute Advocate ({disputeDraft.source})</b><p>{disputeDraft.summary}</p></aside>}
                 <section style={{ marginTop: "3rem" }}>
                   <h2>Approval inbox</h2>
