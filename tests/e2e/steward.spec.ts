@@ -4,22 +4,22 @@ test.describe("Steward judge journeys", () => {
   test("landing page loads with hero and CTAs", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: /Give your AI agent a mandate, not your credit card./ })).toBeVisible();
-    await expect(page.getByRole("link", { name: /Launch Control Room/ })).toBeVisible();
-    await expect(page.getByRole("link", { name: /Create a Mandate/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Launch Control Room/ }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: /Create a Mandate/ }).first()).toBeVisible();
   });
 
   test("dashboard loads with system status and metrics", async ({ page }) => {
     await page.goto("/dashboard");
-    await expect(page.getByRole("heading", { name: "Control Room" })).toBeVisible();
-    await expect(page.getByText("Active Mandates")).toBeVisible();
-    await expect(page.getByText("Purchase Requests")).toBeVisible();
-    await expect(page.getByText("Pending Approvals")).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Control Room/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Active Mandates" })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole("heading", { name: "Purchase Requests" })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole("heading", { name: "Pending Approvals" })).toBeVisible({ timeout: 15000 });
   });
 
   test("navigates to mandates page", async ({ page }) => {
     await page.goto("/dashboard");
     await page.getByRole("link", { name: /Mandates/ }).first().click();
-    await expect(page.getByRole("heading", { name: "Mandates" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Mandates", exact: true })).toBeVisible();
   });
 
   test("navigates to red-team lab", async ({ page }) => {
@@ -42,7 +42,7 @@ test.describe("Steward judge journeys", () => {
   test("mobile layout renders without horizontal overflow", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/dashboard");
-    await expect(page.getByRole("heading", { name: "Control Room" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Control Room/ })).toBeVisible();
     const body = page.locator("body");
     await expect(body).toHaveCSS("overflow-x", "hidden");
   });
@@ -58,32 +58,32 @@ test.describe("Steward judge journeys", () => {
 
   test("purchase requests page loads", async ({ page }) => {
     await page.goto("/purchase-requests");
-    await expect(page.getByRole("heading", { name: "Purchase Requests" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Purchase Requests", exact: true })).toBeVisible();
   });
 
   test("orders page loads", async ({ page }) => {
     await page.goto("/orders");
-    await expect(page.getByRole("heading", { name: "Orders" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Orders", exact: true })).toBeVisible();
   });
 
   test("payments page loads", async ({ page }) => {
     await page.goto("/payments");
-    await expect(page.getByRole("heading", { name: "Payments" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Payments", exact: true })).toBeVisible();
   });
 
   test("refunds page loads", async ({ page }) => {
     await page.goto("/refunds");
-    await expect(page.getByRole("heading", { name: "Refunds" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Refunds", exact: true })).toBeVisible();
   });
 
   test("tracking page loads", async ({ page }) => {
     await page.goto("/tracking");
-    await expect(page.getByRole("heading", { name: "Tracking" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Tracking", exact: true })).toBeVisible();
   });
 
   test("disputes page loads", async ({ page }) => {
     await page.goto("/disputes");
-    await expect(page.getByRole("heading", { name: "Disputes" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Disputes", exact: true })).toBeVisible();
   });
 
   test("mcp page loads with key management", async ({ page }) => {

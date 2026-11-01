@@ -8,27 +8,27 @@ test.describe("Key pages verification", () => {
 
   test("orders page loads", async ({ page }) => {
     await page.goto("/orders");
-    await expect(page.getByRole("heading", { name: "Orders" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Orders", exact: true })).toBeVisible();
   });
 
   test("payments page loads", async ({ page }) => {
     await page.goto("/payments");
-    await expect(page.getByRole("heading", { name: "Payments" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Payments", exact: true })).toBeVisible();
   });
 
   test("refunds page loads", async ({ page }) => {
     await page.goto("/refunds");
-    await expect(page.getByRole("heading", { name: "Refunds" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Refunds", exact: true })).toBeVisible();
   });
 
   test("tracking page loads", async ({ page }) => {
     await page.goto("/tracking");
-    await expect(page.getByRole("heading", { name: "Tracking" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Tracking", exact: true })).toBeVisible();
   });
 
   test("disputes page loads", async ({ page }) => {
     await page.goto("/disputes");
-    await expect(page.getByRole("heading", { name: "Disputes" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Disputes", exact: true })).toBeVisible();
   });
 
   test("mcp page loads", async ({ page }) => {

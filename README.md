@@ -1,12 +1,20 @@
-# Steward
+# Steward AI — Autonomous Shopping with User Control
+
+> **Give your AI agent a mandate, not your credit card.**  
+> *AI proposes. Policy decides. Humans control. PayPal executes. Ledger proves.*
+
+[![CI](https://github.com/Princevish-dev/Steward/actions/workflows/ci.yml/badge.svg)](https://github.com/Princevish-dev/Steward/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![PayPal Sandbox](https://img.shields.io/badge/PayPal-Sandbox%20v2-003087.svg)](https://developer.paypal.com)
+[![Audit Ledger](https://img.shields.io/badge/Ledger-SHA--256%20Hash--Chained-success.svg)](https://github.com/Princevish-dev/Steward)
 
 ## 30-second pitch
 
-Steward lets an AI agent shop through PayPal Sandbox under an owner-defined
+Steward AI lets an AI agent shop through PayPal Sandbox under an owner-defined
 mandate. AI proposes and explains; deterministic policy rules decide; the server
 alone can pay; and every transition is verifiable in a SHA-256 ledger.
 
-**Try it live:** configure the deployed URL in the Devpost submission. The
+**Try it live:** [https://steward-w7pk.onrender.com](https://steward-w7pk.onrender.com). The
 dashboard's **Demo login** is the judge path. PayPal Sandbox buyer credentials
 are intentionally placeholders and must be supplied by the release owner, not
 committed here.

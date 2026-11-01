@@ -15,8 +15,8 @@ test("capture homepage screenshots", async ({ page }) => {
   // Verify key elements visible at desktop
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(page.getByRole("heading", { name: /Give your AI agent a mandate, not your credit card./ })).toBeVisible();
-  await expect(page.getByRole("link", { name: /Launch Control Room/ })).toBeVisible();
-  await expect(page.getByRole("link", { name: /Create a Mandate/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Launch Control Room/ }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: /Create a Mandate/ }).first()).toBeVisible();
 });
 
 test("capture dashboard screenshots", async ({ page }) => {

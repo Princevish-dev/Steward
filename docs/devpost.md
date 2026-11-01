@@ -1,8 +1,8 @@
-# Steward
+# Steward AI — Autonomous Shopping with User Control
 
 ## Tagline
 
-Give an AI agent a mandate, not your credit card.
+Give your AI agent a mandate, not your credit card.
 
 ## Inspiration
 
