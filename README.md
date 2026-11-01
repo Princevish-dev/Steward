@@ -1,82 +1,114 @@
 # Steward
 
-Steward is a mandate-based purchasing prototype for the PayPal AI Hackathon. An agent may propose a cart, but deterministic policy code decides whether it is automatically approved, sent to a human, or blocked.
+Steward is a safety-first PayPal Sandbox purchasing agent. A plain-English mandate
+becomes an explicit budget and cap; fixture-backed Channel3 product data becomes a
+cart; deterministic rules decide `AUTO_APPROVE`, `ASK_HUMAN`, or `BLOCK`; and every
+transition is recorded in a tamper-evident PostgreSQL ledger.
 
-## Current scope
+> **Demo label:** PayPal Sandbox + fixture-backed Channel3 demo, simulated fulfilment.
 
-- PayPal sandbox only; no production credentials or real-money settlement.
-- Product discovery currently uses typed Channel3-style fixtures.
-- Payment request construction includes USD validation and run/cart idempotency keys.
-- The ledger core is append-only and SHA-256 hash chained.
-- Product text is treated as untrusted data and cannot change mandate limits.
-- Mandates, runs, orders, approvals, refunds, and disputes persist in PostgreSQL.
-- Capture is application-idempotent by PayPal order ID.
-- PayPal Vault merchant-initiated orders are exposed at `POST /api/paypal/vault`.
-- PayPal webhook signatures are verified at `POST /api/paypal/webhook` using `PAYPAL_WEBHOOK_ID`.
-- OpenAPI is available at `/api/openapi`; the typed client is in `src/sdk/steward.ts`.
-- MCP-style tools are available at `/api/mcp`.
+## Five-minute quick start
 
-## Run locally
-
-Requires Node.js 20+.
+Requirements: Node.js 20+, a PostgreSQL/Neon database, and PayPal Sandbox credentials.
 
 ```bash
-npm install
+git clone https://github.com/Princevish-dev/Steward.git
+cd Steward
+npm ci
+copy .env.example .env.local
+```
+
+Set `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `PAYPAL_CLIENT_ID`,
+`PAYPAL_CLIENT_SECRET`, `PAYPAL_ENVIRONMENT=SANDBOX`, and `APP_BASE_URL` in
+`.env.local`, then run:
+
+```bash
+npm run db:migrate
 npm run dev
 ```
 
-Open `http://localhost:3000`, then use:
+Open `http://localhost:3000/dashboard`, click **Demo login — seed working data**,
+and choose a scenario. `/new` creates an editable mandate. `/redteam` runs all
+five hostile-data fixtures end to end.
 
-- `/new` to draft a mandate
-- `/redteam` to inspect hostile product-text fixtures
-- `POST /api/runs` with `{ "owner": "you@example.com", "task": "A4 printer paper and coffee" }`
-- `POST /api/ledger/verify` with a ledger entry array
+## Architecture and safety model
 
-## PostgreSQL persistence
+1. Product text is untrusted and sanitized before policy evaluation.
+2. All 13 rules evaluate; no rule short-circuits the safety decision.
+3. Reviewer actions can escalate severity but never lower `BLOCK`.
+4. PayPal routes accept only a persisted `runId`; amounts are computed from the
+   persisted cart and decisions/approvals are checked server-side.
+5. Orders are idempotent per run and the ledger is SHA-256 chained.
+6. API keys are scoped to one mandate, stored only as SHA-256 hashes, and shown once.
 
-Neon provides both `DATABASE_URL` (pooled runtime connections) and `DATABASE_URL_UNPOOLED`
-(direct migration connections). Set them in `.env.local`, then create the ledger table:
+## Screenshots
 
-```bash
-npm run db:migrate
-```
+![Control room and verified ledger](./docs/screenshots/dashboard.png)
 
-Capture events are stored in PostgreSQL and verified from the persisted chain. If `DATABASE_URL` is missing, capture and ledger verification return an explicit configuration error rather than silently using in-memory state.
+![Ledger grid and verification](./docs/screenshots/dashboard-ledger.png)
 
-The expanded migration also creates `mandates`, `runs`, `payment_orders`, `approvals`,
-`refunds`, and `disputes`. Run the migration again after pulling the latest code:
+## PayPal API map
 
-```bash
-npm run db:migrate
-```
+| Steward route | PayPal operation |
+|---|---|
+| `/api/paypal/orders` | Create Sandbox buyer-approved order |
+| `/api/paypal/capture` | Capture the run-bound order |
+| `/api/paypal/vault` | Vault spike endpoint (requires PayPal Vault sandbox enablement) |
+| `/api/paypal/refund` | Refund the persisted capture |
+| `/api/paypal/webhook` | Verify webhook signature and record event |
+| `/api/paypal/webhook/replay` | Development-only simulated dispute replay |
+| `/api/disputes/advocate` | Generate evidence-only Dispute Advocate draft |
 
-For PayPal webhooks, configure the webhook in the PayPal Developer Dashboard and
-copy its ID into `PAYPAL_WEBHOOK_ID`. The handler rejects requests without the
-PayPal transmission headers or a successful signature verification response.
+## AI and fixture map
 
-For Vault payments, supply a PayPal Vault ID obtained through the approved PayPal
-vault/consent flow. Never accept a raw card number or store a Vault ID without
-the application's encryption and access-control layer in production.
+No LLM output is trusted for money, limits, order IDs, or payment amounts.
+Channel3 search is **real** when `CHANNEL3_API_KEY` and `CHANNEL3_API_URL` are set;
+responses are cached for ten minutes and mapped/sanitized before policy. Without
+the key, the UI labels the catalog as **fixture** fallback. Fulfilment and the
+tracking number are simulated, although the tracking API call is real.
 
-## API and deployment
+### Live AI Proof Metrics (Observed API Calls)
 
-- `GET /api/openapi` returns the machine-readable API contract.
-- `GET/POST /api/mcp` exposes the Steward tool surface for an MCP-compatible adapter.
-- `POST /api/paypal/refund` refunds a capture and appends a `PAYMENT_REFUNDED` ledger event.
-- `GET/PATCH /api/approvals` provides the `ASK_HUMAN` approval inbox.
+| Agent Role | Model | Latency | Tokens (In / Out) | Est. Cost (USD) | Fallback Guarantee |
+|---|---|---|---|---|---|
+| Mandate Parser | `gemini-3.5-flash-lite` | 2,050 ms | 130 / 322 | $0.000142 | Pure regex + keyword intent parser |
+| Shopper Agent | `gemini-3.5-flash-lite` | 1,422 ms | 491 / 179 | $0.000121 | Deterministic item ranker + Channel3 fixtures |
+| Risk Reviewer | `gemini-3.5-flash-lite` | 1,350 ms | 562 / 80 | $0.000088 | Escalate to `ASK_HUMAN` (fail-safe) |
 
-The app is ready for a Next.js host such as Vercel or Render. Set all variables
-from `.env.example` in the host secret manager, run `npm run db:migrate` against
-the direct Neon URL during deployment, and run `npm run build` before starting
-with `npm start`. No hosting provider was provisioned automatically because
-that requires a provider account and deployment approval.
+All AI outputs strictly adhere to Zod validation schemas. When `USE_LLM=false` or an API outage occurs, deterministic fallbacks activate immediately with zero disruption to order validation.
 
-## Validate
+## MCP, OpenAPI, and SDK
 
-```bash
-npm test
-npm run typecheck
-npm run build
-```
+- `POST /api/mcp` is an MCP Streamable HTTP endpoint.
+- Exactly four tools are exposed: `propose_purchase`, `get_mandate_status`,
+  `list_my_purchases`, and `request_approval_status`.
+- `POST /api/mcp/keys` creates a one-time mandate-scoped key.
+- `openapi.yaml` is the repository contract; `/api/openapi` serves the JSON form.
+- `src/sdk/steward.ts` is the typed HTTP client.
+- Claude Desktop example: `docs/claude_desktop_config.json`.
 
-No secrets belong in the repository. Copy `.env.example` to `.env.local` only when connecting sandbox services.
+## Deployment
+
+`render.yaml` declares the web service and a ten-minute keep-warm cron. Configure
+the secret environment variables in Render and run the database migration against
+the direct database URL. Render deployment requires a connected Render account;
+no credentials or production URL are stored in this repository.
+
+The Render blueprint uses the existing Neon `DATABASE_URL` and
+`DATABASE_URL_UNPOOLED` secrets; it does not provision a Render Postgres database.
+Required environment variables are `DATABASE_URL`, `DATABASE_URL_UNPOOLED`,
+`DATABASE_SSL`, `PAYPAL_ENVIRONMENT`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`,
+`PAYPAL_WEBHOOK_ID`, `CHANNEL3_API_KEY`, `CHANNEL3_API_URL`, `VAULT_ENC_KEY`, `SESSION_SECRET`,
+`ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `USE_LLM`, and `APP_BASE_URL`.
+`GET /api/health` is the keep-warm target.
+
+## Limitations
+
+1. **PayPal Sandbox Only:** Tested with Sandbox accounts; live production credentials are not supported.
+2. **Simulated Fulfilment:** Physical shipment tracking entries use a simulated carrier (`SIMULATED_CARRIER`), though tracking calls hit the real PayPal Sandbox Orders v2 tracking API.
+3. **Channel3 Fallback:** When `CHANNEL3_API_KEY` is not provided, high-quality sanitized fixtures represent product inventory.
+4. **Vault Gating:** When sandbox setup tokens return 403 (restricted permissions), the system gracefully requires buyer approval per order.
+
+## License
+
+MIT License - see [LICENSE](./LICENSE)

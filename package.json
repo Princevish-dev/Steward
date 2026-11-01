@@ -9,22 +9,32 @@
     "db:migrate": "node --env-file=.env.local scripts/migrate.mjs",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "playwright test"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.94",
+    "@ai-sdk/google": "^4.0.109",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@neon/config": "^1.10.0",
     "@neon/env": "^1.6.8",
-    "next": "^15.0.0",
+    "ag-grid-community": "^36.2.0",
+    "ag-grid-react": "^36.2.0",
+    "ai": "^7.0.159",
+    "next": "^15.5.28",
     "pg": "^8.13.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.10",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^15.5.28",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
   }
