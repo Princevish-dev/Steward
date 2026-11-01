@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "db:migrate": "node scripts/migrate.mjs",
+    "db:clean-demo": "node scripts/clean-demo-data.mjs",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import LedgerGrid, { type LedgerGridRow } from "./LedgerGrid";
 
@@ -88,6 +88,24 @@ export default function DashboardPage() {
   const [disputeDraft, setDisputeDraft] = useState<{ summary: string; source: string } | null>(null);
   const [simulationStatus, setSimulationStatus] = useState<string | null>(null);
 
+  const refreshControlRoom = useCallback(async () => {
+    const currentMandateId = mandateId ?? new URLSearchParams(window.location.search).get("mandateId");
+    const [approvalResponse, ledgerResponse] = await Promise.all([
+      fetch("/api/approvals"),
+      currentMandateId
+        ? fetch(`/api/ledger/verify?mandateId=${encodeURIComponent(currentMandateId)}`)
+        : Promise.resolve(new Response(null, { status: 204 }))
+    ]);
+    if (approvalResponse.ok) setApprovals((await approvalResponse.json() as { approvals: Approval[] }).approvals);
+    if (ledgerResponse.ok) {
+      const body = await ledgerResponse.json() as { entries?: LedgerRow[]; verification?: { valid: boolean } };
+      if (body.entries && body.verification) {
+        setLedger(body.entries);
+        setLedgerValid(body.verification.valid);
+      }
+    }
+  }, [mandateId]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("mandateId")) setMandateId(params.get("mandateId"));
@@ -97,32 +115,22 @@ export default function DashboardPage() {
       setCaptureStatus("Buyer approval received. Capture the order to complete payment.");
     }
     void refreshControlRoom();
-  }, []);
+  }, [refreshControlRoom]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
 
-  async function refreshControlRoom() {
-    const [approvalResponse, ledgerResponse] = await Promise.all([
-      fetch("/api/approvals"),
-      fetch("/api/ledger/verify")
-    ]);
-    if (approvalResponse.ok) setApprovals((await approvalResponse.json() as { approvals: Approval[] }).approvals);
-    if (ledgerResponse.ok) {
-      const body = await ledgerResponse.json() as { entries: LedgerRow[]; verification: { valid: boolean } };
-      setLedger(body.entries);
-      setLedgerValid(body.verification.valid);
-    }
-  }
-
   async function verifyLedgerNow() {
-    const response = await fetch("/api/ledger/verify");
+    if (!mandateId) return;
+    const response = await fetch(`/api/ledger/verify?mandateId=${encodeURIComponent(mandateId)}`);
     if (response.ok) {
-      const body = await response.json() as { entries: LedgerRow[]; verification: { valid: boolean } };
-      setLedger(body.entries);
-      setLedgerValid(body.verification.valid);
+      const body = await response.json() as { entries?: LedgerRow[]; verification?: { valid: boolean } };
+      if (body.entries && body.verification) {
+        setLedger(body.entries);
+        setLedgerValid(body.verification.valid);
+      }
     }
   }
 
@@ -168,6 +176,14 @@ export default function DashboardPage() {
     setMandateId(body.mandate.id);
     setMandateStatus("Mandate ACTIVE — demo data ready.");
     setDemoStatus("Demo login ready. Sample runs and approval inbox loaded.");
+    const ledgerResponse = await fetch(`/api/ledger/verify?mandateId=${encodeURIComponent(body.mandate.id)}`);
+    if (ledgerResponse.ok) {
+      const ledgerBody = await ledgerResponse.json() as { entries?: LedgerRow[]; verification?: { valid: boolean } };
+      if (ledgerBody.entries && ledgerBody.verification) {
+        setLedger(ledgerBody.entries);
+        setLedgerValid(ledgerBody.verification.valid);
+      }
+    }
     await refreshControlRoom();
   }
 

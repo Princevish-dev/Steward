@@ -27,6 +27,14 @@ export async function getMandate(id: string): Promise<Mandate | null> {
   return result.rows[0]?.definition as Mandate | null;
 }
 
+export async function listMandatesForOwner(owner: string): Promise<string[]> {
+  const result = await getDatabasePool().query(
+    "SELECT id FROM mandates WHERE owner = $1 ORDER BY created_at ASC",
+    [owner]
+  );
+  return result.rows.map((row) => String(row.id));
+}
+
 export async function setMandateStatus(id: string, status: "ACTIVE" | "REVOKED"): Promise<Mandate | null> {
   const result = await getDatabasePool().query(
     `UPDATE mandates
