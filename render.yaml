@@ -11,6 +11,8 @@ services:
         sync: false
       - key: DATABASE_URL_UNPOOLED
         sync: false
+      - key: DATABASE_SSL
+        value: "false"
       - key: PAYPAL_ENVIRONMENT
         value: SANDBOX
       - key: PAYPAL_CLIENT_ID
@@ -19,5 +21,30 @@ services:
         sync: false
       - key: PAYPAL_WEBHOOK_ID
         sync: false
+      - key: CHANNEL3_API_KEY
+        sync: false
+      - key: VAULT_ENC_KEY
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-5-5
+      - key: GOOGLE_GENERATIVE_AI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash-lite
+      - key: USE_LLM
+        value: "true"
+      - key: APP_BASE_URL
+        sync: false
+  - type: cron
+    name: steward-keep-warm
+    schedule: "*/10 * * * *"
+    runtime: node
+    buildCommand: npm ci
+    startCommand: node -e "fetch(process.env.APP_BASE_URL + '/api/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
+    envVars:
       - key: APP_BASE_URL
         sync: false

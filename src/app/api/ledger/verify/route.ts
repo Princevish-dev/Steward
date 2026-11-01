@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyLedger } from "@/core/ledger/verify";
 import type { LedgerEntry } from "@/core/ledger/types";
-import { readLedger } from "@/core/ledger/store";
+import { readLedger, readLedgerGrid } from "@/core/ledger/store";
 
 export async function POST(request: Request) {
   let entries: unknown = await readLedger();
@@ -21,5 +21,5 @@ export async function POST(request: Request) {
 
 export async function GET() {
   const entries = await readLedger();
-  return NextResponse.json({ entries, verification: verifyLedger(entries) });
+  return NextResponse.json({ entries: await readLedgerGrid(), verification: verifyLedger(entries) });
 }

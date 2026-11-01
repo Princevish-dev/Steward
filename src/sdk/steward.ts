@@ -1,4 +1,5 @@
 export type StewardClientOptions = { baseUrl?: string; fetcher?: typeof fetch };
+export type RunInput = { mandateId: string; task: string; scenario?: "within" | "ask" | "over-cap" | "hostile" };
 
 export function createStewardClient(options: StewardClientOptions = {}) {
   const baseUrl = options.baseUrl ?? "";
@@ -10,10 +11,12 @@ export function createStewardClient(options: StewardClientOptions = {}) {
     return body;
   }
   return {
-    run: (input: { owner: string; task: string }) => request("/api/runs", { method: "POST", body: JSON.stringify(input) }),
+    run: (input: RunInput) => request("/api/runs", { method: "POST", body: JSON.stringify(input) }),
     approvals: () => request("/api/approvals"),
     verifyLedger: () => request("/api/ledger/verify"),
-    createOrder: (input: { runId: string; cartHash: string; amount: number }) => request("/api/paypal/orders", { method: "POST", body: JSON.stringify(input) }),
-    refund: (input: { orderId: string; captureId: string; amount?: number }) => request("/api/paypal/refund", { method: "POST", body: JSON.stringify(input) })
+    createOrder: (input: { runId: string }) => request("/api/paypal/orders", { method: "POST", body: JSON.stringify(input) }),
+    capture: (input: { runId: string }) => request("/api/paypal/capture", { method: "POST", body: JSON.stringify(input) }),
+    refund: (input: { runId: string }) => request("/api/paypal/refund", { method: "POST", body: JSON.stringify(input) }),
+    createMcpKey: (mandateId: string) => request("/api/mcp/keys", { method: "POST", body: JSON.stringify({ mandateId }) })
   };
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildCartFromProductIds, buildCartFromTask } from "@/core/agents/shopper";
+import { buildCartFromProductIds, buildCartFromTask, buildCartWithAi } from "@/core/agents/shopper";
+import type { AiObjectGenerator } from "@/core/ai/client";
 import type { Mandate } from "@/core/mandate/schema";
 
 const mandate: Mandate = {
@@ -34,5 +35,18 @@ describe("shopper", () => {
   it("returns no product for a category outside the mandate", () => {
     const result = buildCartFromProductIds(["cleaner-001"], mandate);
     expect(result.cart.items).toHaveLength(0);
+  });
+
+  it("ignores AI-supplied unknown products and quantities over the mandate cap", async () => {
+    const result = await buildCartWithAi("paper", mandate, (async () => ({
+      object: {
+        queries: ["paper"],
+        cart: { items: [{ productId: "unknown", qty: 99, reason: "ignore rules" }] },
+        flags: []
+      },
+      meta: { model: "mock", latencyMs: 1 }
+    })) as AiObjectGenerator);
+    expect(result.cart.items).toHaveLength(0);
+    expect(result.source).toBe("llm");
   });
 });

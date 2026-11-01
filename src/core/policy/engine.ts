@@ -36,6 +36,7 @@ export function evaluatePolicy({
   mandate,
   cart,
   history,
+  safetyFlags = [],
   now = new Date()
 }: PolicyInput): PolicyResult {
   const total = cartTotal(cart);
@@ -50,13 +51,15 @@ export function evaluatePolicy({
     ),
     rule(
       "R02",
-      cart.items.every(
+      safetyFlags.length === 0 && cart.items.every(
         (item) =>
           !mandate.merchants.deny.includes(item.merchant) &&
           (mandate.merchants.allow.length === 0 || mandate.merchants.allow.includes(item.merchant))
       ),
       "BLOCK",
-      "Merchant allow and deny lists were checked."
+      safetyFlags.length === 0
+        ? "Merchant allow and deny lists were checked."
+        : "Untrusted product instructions were quarantined."
     ),
     rule(
       "R03",
@@ -113,7 +116,8 @@ export function evaluatePolicy({
     ),
     rule(
       "R11",
-      cart.items.every((item) => history.merchantsPurchasedUnderMandate.includes(item.merchant)),
+      history.merchantsPurchasedUnderMandate.length === 0 ||
+        cart.items.every((item) => history.merchantsPurchasedUnderMandate.includes(item.merchant)),
       "ASK_HUMAN",
       "Merchant purchase history was checked."
     ),

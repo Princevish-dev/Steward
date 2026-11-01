@@ -22,7 +22,7 @@ const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim();
 const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim() ?? (anthropicKey?.startsWith("AQ.") || anthropicKey?.startsWith("AIza") ? anthropicKey : undefined);
 const isGoogleKey = Boolean(googleKey);
 
-const DEFAULT_MODEL = isGoogleKey ? (process.env.GEMINI_MODEL ?? "gemini-3.5-flash-lite") : (process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6");
+const DEFAULT_MODEL = isGoogleKey ? (process.env.GEMINI_MODEL ?? "gemini-3.5-flash-lite") : (process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5-5");
 
 export const useLlm = process.env.USE_LLM !== "false" && Boolean(anthropicKey || googleKey);
 

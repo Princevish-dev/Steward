@@ -81,6 +81,26 @@ export async function readLedger(): Promise<LedgerEntry[]> {
   return result.rows.map(rowToEntry);
 }
 
+export async function readLedgerGrid() {
+  const result = await getDatabasePool().query(
+    `SELECT l.sequence, l.timestamp, l.type, l.run_id, l.entry_hash,
+            r.decision, r.policy
+     FROM ledger_entries l
+     LEFT JOIN runs r ON r.id = l.run_id
+     ORDER BY l.sequence ASC`
+  );
+  return result.rows.map((row) => ({
+    sequence: Number(row.sequence),
+    timestamp: new Date(String(row.timestamp)).toISOString(),
+    type: String(row.type),
+    runId: String(row.run_id),
+    entryHash: String(row.entry_hash),
+    decision: row.decision ? String(row.decision) : undefined,
+    rationale: (row.policy as { decision?: string } | null)?.decision,
+    ruleResults: (row.policy as { ruleResults?: unknown[] } | null)?.ruleResults
+  }));
+}
+
 export async function findLedgerEvent(type: string, key: string): Promise<LedgerEntry | null> {
   const result = await getDatabasePool().query(
     `SELECT sequence, timestamp, type, run_id, mandate_id, payload, prev_hash, entry_hash
@@ -90,4 +110,13 @@ export async function findLedgerEvent(type: string, key: string): Promise<Ledger
     [type, key]
   );
   return result.rows[0] ? rowToEntry(result.rows[0]) : null;
+}
+
+export async function readLedgerForRun(runId: string): Promise<LedgerEntry[]> {
+  const result = await getDatabasePool().query(
+    `SELECT sequence, timestamp, type, run_id, mandate_id, payload, prev_hash, entry_hash
+     FROM ledger_entries WHERE run_id = $1 ORDER BY sequence ASC`,
+    [runId]
+  );
+  return result.rows.map(rowToEntry);
 }

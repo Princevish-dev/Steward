@@ -51,5 +51,6 @@ export type PolicyInput = {
   mandate: Mandate;
   cart: Cart;
   history: PurchaseHistory;
+  safetyFlags?: string[];
   now?: Date;
 };

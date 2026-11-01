@@ -35,7 +35,8 @@ export const mandateSchema = z
       maxAutoPurchasesPer24h: z.number().int().nonnegative()
     }),
     expiresAt: z.string().datetime(),
-    status: z.enum(["ACTIVE", "REVOKED", "EXPIRED"])
+    status: z.enum(["DRAFT", "ACTIVE", "REVOKED", "EXPIRED"]),
+    source: z.enum(["llm", "fallback"]).optional()
   })
   .strict();
 

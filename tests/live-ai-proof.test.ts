@@ -7,7 +7,7 @@ import { useLlm } from "@/core/ai/client";
 import * as fs from "node:fs";
 
 describe("Live AI proof verification", () => {
-  it("runs real AI calls for parser, shopper, and risk reviewer", async () => {
+  it.skipIf(!useLlm)("runs real AI calls for parser, shopper, and risk reviewer", async () => {
     console.log("useLlm is:", useLlm);
     expect(useLlm).toBe(true);
 
@@ -58,9 +58,9 @@ describe("Live AI proof verification", () => {
       cart: shopperResult.cart,
       policyDecision: "AUTO_APPROVE",
       ruleResults: [
-        { id: "R01", passed: true, reason: "Mandate ACTIVE" },
-        { id: "R04", passed: true, reason: "Item price under cap" },
-        { id: "R05", passed: true, reason: "Cart total under cap" }
+        { id: "R01", passed: true, outcome: "BLOCK", reason: "Mandate ACTIVE" },
+        { id: "R04", passed: true, outcome: "BLOCK", reason: "Item price under cap" },
+        { id: "R05", passed: true, outcome: "BLOCK", reason: "Cart total under cap" }
       ],
       flags: shopperResult.flags.map(f => f.code),
       history: { spentInPeriod: 0, autoPurchasesLast24h: 0, merchantsPurchasedUnderMandate: [] }
@@ -109,7 +109,7 @@ describe("Live AI proof verification", () => {
       mandate,
       cart: fallbackShopper.cart,
       policyDecision: "AUTO_APPROVE",
-      ruleResults: [{ id: "R01", passed: true, reason: "Mandate ACTIVE" }],
+      ruleResults: [{ id: "R01", passed: true, outcome: "BLOCK", reason: "Mandate ACTIVE" }],
       flags: [],
       history: { spentInPeriod: 0, autoPurchasesLast24h: 0, merchantsPurchasedUnderMandate: [] },
       generator: async () => { throw new Error("Simulated LLM outage"); }

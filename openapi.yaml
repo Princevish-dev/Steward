@@ -1,0 +1,63 @@
+openapi: 3.0.3
+info:
+  title: Steward API
+  version: 1.0.0
+  description: Safety-first mandate purchasing API.
+  license:
+    name: MIT
+    url: https://opensource.org/license/mit
+servers:
+  - url: https://steward.onrender.com
+security: []
+paths:
+  /api/runs:
+    post:
+      summary: Evaluate a purchase task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mandateId, task]
+              properties:
+                mandateId: { type: string }
+                task: { type: string }
+                scenario: { type: string, enum: [within, ask, over-cap, hostile] }
+      responses:
+        "200": { description: Policy decision and cart }
+  /api/approvals:
+    get: { summary: List approval requests, responses: { "200": { description: Approval list } } }
+    patch: { summary: Approve or reject a request, responses: { "200": { description: Updated approval } } }
+  /api/paypal/orders:
+    post:
+      summary: Create a gated PayPal order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [runId]
+              properties: { runId: { type: string } }
+      responses:
+        "200": { description: PayPal order }
+        "403": { description: Payment blocked }
+  /api/paypal/capture:
+    post: { summary: Capture the order for a run, responses: { "200": { description: Capture result } } }
+  /api/paypal/refund:
+    post: { summary: Refund the captured order for a run, responses: { "200": { description: Refund result } } }
+  /api/ledger/verify:
+    get: { summary: Verify the tamper-evident ledger, responses: { "200": { description: Verification result } } }
+  /api/mcp:
+    post:
+      summary: MCP Streamable HTTP endpoint
+      parameters:
+        - in: header
+          name: x-steward-api-key
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: MCP JSON-RPC response }
+        "401": { description: Invalid API key }
+        "403": { description: Mandate mismatch }

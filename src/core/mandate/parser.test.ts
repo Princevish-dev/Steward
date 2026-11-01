@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { draftMandateFromIntent, parseMandateDraft } from "@/core/mandate/parser";
+import { draftMandateFromIntent, draftMandateWithAi, parseMandateDraft } from "@/core/mandate/parser";
+import type { AiObjectGenerator } from "@/core/ai/client";
 
 const validMandate = {
   id: "mdt_test",
@@ -56,5 +57,29 @@ describe("parseMandateDraft", () => {
     expect(result.mandate?.period.budget).toBe(120);
     expect(result.mandate?.caps.perItem).toBe(40);
     expect(result.mandate?.askAbove).toBe(60);
+  });
+
+  it("retries malformed output and marks fallback when both attempts fail", async () => {
+    let attempts = 0;
+    const result = await draftMandateWithAi("owner@example.com", "Buy paper under $40", (async () => {
+      attempts += 1;
+      throw new Error("invalid JSON");
+    }) as AiObjectGenerator);
+    expect(attempts).toBe(2);
+    expect(result.source).toBe("fallback");
+  });
+
+  it("normalizes AI output to a DRAFT mandate", async () => {
+    const result = await draftMandateWithAi("judge@example.com", "Buy paper", (async () => ({
+      object: {
+        mandate: { ...validMandate, owner: "ignored@example.com", status: "ACTIVE" },
+        clarifications: [],
+        refusalReason: null
+      },
+      meta: { model: "mock", latencyMs: 2 }
+    })) as AiObjectGenerator);
+    expect(result.mandate?.owner).toBe("judge@example.com");
+    expect(result.mandate?.status).toBe("DRAFT");
+    expect(result.source).toBe("llm");
   });
 });

@@ -1,6 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
+import LedgerGrid, { type LedgerGridRow } from "./LedgerGrid";
 
 type RuleResult = {
   id: string;
@@ -22,6 +24,16 @@ type RunResult = {
   };
   flags: Array<{ code: string; quote: string }>;
   ruleResults: RuleResult[];
+  catalogSource?: "real" | "fixture";
+  tracking?: { carrier?: string; trackingNumber?: string; status?: string; simulated?: boolean };
+  ai?: {
+    source?: string;
+    reasoning?: string;
+    shopper?: { model?: string; latencyMs?: number };
+    reviewer?: { model?: string; latencyMs?: number };
+    reviewerRationale?: string;
+  };
+  reviewer?: { rationale: string; riskFlags: Array<{ code: string }>; source: string } | null;
   error?: string;
 };
 
@@ -31,6 +43,9 @@ type Approval = {
   status: string;
   reviewer?: string;
   reason?: string;
+  expires_at?: string;
+  total?: number;
+  policy?: { ruleResults?: RuleResult[] };
 };
 
 type LedgerRow = {
@@ -38,6 +53,10 @@ type LedgerRow = {
   timestamp: string;
   type: string;
   entryHash: string;
+  runId?: string;
+  decision?: string;
+  rationale?: string;
+  ruleResults?: RuleResult[];
 };
 
 const decisionColor = {
@@ -55,17 +74,34 @@ export default function DashboardPage() {
   const [orderStatus, setOrderStatus] = useState<string | null>(null);
   const [approvedOrderId, setApprovedOrderId] = useState<string | null>(null);
   const [captureStatus, setCaptureStatus] = useState<string | null>(null);
+  const [mandateId, setMandateId] = useState<string | null>(null);
+  const [mandateStatus, setMandateStatus] = useState("No mandate confirmed");
+  const [approvedRunId, setApprovedRunId] = useState<string | null>(null);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [ledgerValid, setLedgerValid] = useState<boolean | null>(null);
+  const [scenario, setScenario] = useState<"within" | "ask" | "over-cap" | "hostile">("within");
+  const [demoStatus, setDemoStatus] = useState("");
+  const [now, setNow] = useState(() => Date.now());
+  const [mcpKey, setMcpKey] = useState<string | null>(null);
+  const [refundStatus, setRefundStatus] = useState<string | null>(null);
+  const [disputeDraft, setDisputeDraft] = useState<{ summary: string; source: string } | null>(null);
+  const [simulationStatus, setSimulationStatus] = useState<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    if (params.get("mandateId")) setMandateId(params.get("mandateId"));
     if (params.get("paypal") === "approved") {
       setApprovedOrderId(params.get("orderId"));
+      setApprovedRunId(params.get("runId"));
       setCaptureStatus("Buyer approval received. Capture the order to complete payment.");
     }
     void refreshControlRoom();
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
   }, []);
 
   async function refreshControlRoom() {
@@ -81,13 +117,69 @@ export default function DashboardPage() {
     }
   }
 
+  async function verifyLedgerNow() {
+    const response = await fetch("/api/ledger/verify");
+    if (response.ok) {
+      const body = await response.json() as { entries: LedgerRow[]; verification: { valid: boolean } };
+      setLedger(body.entries);
+      setLedgerValid(body.verification.valid);
+    }
+  }
+
   async function resolveApproval(id: string, status: "APPROVED" | "REJECTED") {
-    await fetch("/api/approvals", {
+    const response = await fetch("/api/approvals", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id, status, reviewer: owner })
     });
+    if (response.ok && status === "APPROVED") {
+      const approval = approvals.find((item) => item.id === id);
+      if (approval) {
+        setResult((current) => current);
+        setOrderStatus("Approval recorded. Creating a gated PayPal order...");
+        const orderResponse = await fetch("/api/paypal/orders", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ runId: approval.run_id })
+        });
+        const order = await orderResponse.json() as { approvalUrl?: string; error?: string };
+        setOrderStatus(orderResponse.ok
+          ? "PayPal Sandbox order created. Buyer approval is required before capture."
+          : order.error ?? "Could not create the gated order.");
+        if (order.approvalUrl) window.open(order.approvalUrl, "_blank", "noopener,noreferrer");
+      }
+    }
     await refreshControlRoom();
+  }
+
+  async function seedDemo() {
+    setDemoStatus("Seeding sandbox buyer, active mandate, and sample runs...");
+    const response = await fetch("/api/demo", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ owner })
+    });
+    const body = await response.json() as { mandate?: { id: string }; error?: string };
+    if (!response.ok || !body.mandate) {
+      setDemoStatus(body.error ?? "Demo seed failed.");
+      return;
+    }
+
+    setMandateId(body.mandate.id);
+    setMandateStatus("Mandate ACTIVE — demo data ready.");
+    setDemoStatus("Demo login ready. Sample runs and approval inbox loaded.");
+    await refreshControlRoom();
+  }
+
+  async function createMcpKey() {
+    if (!mandateId) return;
+    const response = await fetch("/api/mcp/keys", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ mandateId })
+    });
+    const body = await response.json() as { key?: string; error?: string };
+    setMcpKey(response.ok ? body.key ?? null : body.error ?? "Could not create MCP key.");
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -95,10 +187,26 @@ export default function DashboardPage() {
     setLoading(true);
     setResult(null);
     try {
+      let activeMandateId = mandateId;
+      if (!activeMandateId) {
+        const draftResponse = await fetch("/api/mandates", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ owner, intent: task })
+        });
+        const draft = await draftResponse.json() as { mandate?: { id: string }; error?: string };
+        if (!draftResponse.ok || !draft.mandate) throw new Error(draft.error ?? "Could not create mandate draft.");
+        const confirmResponse = await fetch(`/api/mandates/${draft.mandate.id}/confirm`, { method: "POST" });
+        const confirmed = await confirmResponse.json() as { mandate?: { id: string }; error?: string };
+        if (!confirmResponse.ok || !confirmed.mandate) throw new Error(confirmed.error ?? "Could not confirm mandate.");
+        activeMandateId = confirmed.mandate.id;
+        setMandateId(activeMandateId);
+        setMandateStatus("Mandate ACTIVE");
+      }
       const response = await fetch("/api/runs", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ owner, task })
+        body: JSON.stringify({ mandateId: activeMandateId, task, scenario })
       });
       const body = await response.json() as RunResult;
       setResult(response.ok ? body : { ...body, error: body.error ?? "Run failed." });
@@ -123,7 +231,7 @@ export default function DashboardPage() {
     const response = await fetch("/api/paypal/orders", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ runId: result.runId, cartHash: "dashboard-cart", amount: result.total })
+      body: JSON.stringify({ runId: result.runId })
     });
     const body = await response.json() as { approvalUrl?: string; orderId?: string; error?: string };
     if (!response.ok) {
@@ -141,25 +249,65 @@ export default function DashboardPage() {
     const response = await fetch("/api/paypal/capture", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        orderId: approvedOrderId,
-        runId: result?.runId,
-        mandateId: "demo-mandate"
-      })
+      body: JSON.stringify({ runId: approvedRunId ?? result?.runId })
     });
-    const body = await response.json() as { status?: string; ledgerSequence?: number; error?: string };
+    const body = await response.json() as { status?: string; ledgerSequence?: number; error?: string; tracking?: { carrier?: string; trackingNumber?: string; status?: string; simulated?: boolean } };
+    if (response.ok && body.tracking) setResult((current) => current ? { ...current, tracking: body.tracking } : current);
     setCaptureStatus(response.ok
       ? `Payment ${body.status}. Ledger entry #${body.ledgerSequence}.`
       : body.error ?? "Payment capture failed.");
   }
 
+  async function refundPayment() {
+    if (!result) return;
+    setRefundStatus("Issuing Sandbox refund...");
+    const response = await fetch("/api/paypal/refund", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ runId: result.runId })
+    });
+    const body = await response.json() as { refundId?: string; error?: string };
+    setRefundStatus(response.ok ? `Refund issued: ${body.refundId}` : body.error ?? "Refund failed.");
+  }
+
+  async function draftDispute() {
+    if (!result) return;
+    const response = await fetch("/api/disputes/advocate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ runId: result.runId })
+    });
+    const body = await response.json() as { draft?: { summary: string; source: string }; error?: string };
+    setDisputeDraft(response.ok ? body.draft ?? null : { summary: body.error ?? "Dispute draft failed.", source: "fallback" });
+  }
+
+  async function replayDispute() {
+    setSimulationStatus("Replaying SIMULATED dispute webhook...");
+    const response = await fetch("/api/paypal/webhook/replay", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ runId: result?.runId })
+    });
+    const body = await response.json() as { accepted?: boolean; error?: string };
+    setSimulationStatus(response.ok ? "SIMULATED dispute webhook accepted." : body.error ?? "Simulation failed.");
+  }
+
+  async function revokeMandate() {
+    if (!mandateId) return;
+    const response = await fetch(`/api/mandates/${mandateId}/revoke`, { method: "POST" });
+    if (response.ok) setMandateStatus("Mandate REVOKED — all future payments blocked.");
+  }
+
   return (
     <main style={{ maxWidth: 1100, margin: "0 auto", padding: "4rem 1.5rem" }}>
-      <a href="/" style={{ color: "#8b9cff" }}>Back to Steward</a>
+      <Link href="/" style={{ color: "#8b9cff" }}>Back to Steward</Link>
       <h1>Steward control room</h1>
       <p style={{ color: "#b8c0d9", lineHeight: 1.6 }}>
         Submit a task and inspect exactly what the agent proposed and why the deterministic policy engine decided.
       </p>
+      <p style={{ color: "#f0c674" }}>PayPal Sandbox + Channel3 real/fixture search, simulated fulfilment.</p>
+      <button type="button" onClick={seedDemo} style={{ padding: ".7rem 1rem" }}>Demo login — seed working data</button>
+      {demoStatus && <p role="status">{demoStatus}</p>}
 
       <form onSubmit={submit} style={{ display: "grid", gap: "1rem", maxWidth: 760, marginTop: "2rem" }}>
         <label>
@@ -172,13 +320,31 @@ export default function DashboardPage() {
           <input value={task} onChange={(event) => setTask(event.target.value)} required
             style={{ display: "block", width: "100%", marginTop: ".4rem", padding: ".8rem" }} />
         </label>
-        <button type="submit" disabled={loading} style={{ width: "fit-content", padding: ".7rem 1rem" }}>
+        <label>
+          Scenario
+          <select value={scenario} onChange={(event) => setScenario(event.target.value as typeof scenario)}
+            style={{ display: "block", width: "100%", marginTop: ".4rem", padding: ".8rem", boxSizing: "border-box" }}>
+            <option value="within">Within limits (AUTO)</option>
+            <option value="ask">Above ask threshold (ASK_HUMAN)</option>
+            <option value="over-cap">Over cap (BLOCK)</option>
+            <option value="hostile">Hostile product (BLOCK)</option>
+          </select>
+        </label>
+        <button type="submit" disabled={loading} style={{ width: "fit-content", padding: ".7rem 1rem", position: "relative", zIndex: 1 }}>
           {loading ? "Evaluating..." : "Run Steward"}
         </button>
       </form>
       <button type="button" onClick={checkPayPal} style={{ marginTop: "1rem", padding: ".7rem 1rem" }}>
         Check PayPal Sandbox
       </button>
+      <button type="button" onClick={revokeMandate} disabled={!mandateId} style={{ marginTop: "1rem", marginLeft: ".5rem", padding: ".7rem 1rem" }}>
+        Kill switch: revoke mandate
+      </button>
+      <p role="status">{mandateStatus}</p>
+      <button type="button" onClick={createMcpKey} disabled={!mandateId} style={{ padding: ".7rem 1rem" }}>
+        Create mandate MCP key
+      </button>
+      {mcpKey && <p role="status">Copy this key now; it is shown once: <code>{mcpKey}</code></p>}
       {paypalStatus && <p role="status">{paypalStatus}</p>}
       {approvedOrderId && (
         <section style={{ marginTop: "2rem", border: "1px solid #6ee7b7", borderRadius: 10, padding: "1rem" }}>
@@ -201,17 +367,48 @@ export default function DashboardPage() {
                   {result.decision.replace("_", " ")}
                 </h2>
                 <p>Total proposed: ${result.total.toFixed(2)}</p>
+                <p>Channel3 source: <strong>{result.catalogSource ?? "fixture"}</strong>{result.catalogSource !== "real" && " (fixture fallback)"}</p>
+                {result.ai && (
+                  <div style={{ color: "#b8c0d9" }}>
+                    <p>{result.ai.shopper?.model ? `Parsed by ${result.ai.shopper.model}` : "Parsed by deterministic fallback"}</p>
+                    {result.ai.source === "fallback" && <strong>AI fallback used</strong>}
+                    {result.ai.reasoning && <p>Agent reasoning: {result.ai.reasoning}</p>}
+                    {result.reviewer?.rationale && <p>Reviewer rationale: {result.reviewer.rationale}</p>}
+                  </div>
+                )}
                 {result.decision !== "BLOCK" && (
                   <button type="button" onClick={createPayPalOrder} style={{ padding: ".7rem 1rem" }}>
                     Create PayPal Sandbox Order
                   </button>
                 )}
+                {result.tracking && <p>Shipment: {result.tracking.status} — {result.tracking.carrier} / {result.tracking.trackingNumber} (simulated carrier)</p>}
+                <div style={{ display: "flex", gap: ".5rem", flexWrap: "wrap", marginTop: ".75rem" }}>
+                  <button type="button" onClick={refundPayment}>Refund captured payment</button>
+                  <button type="button" onClick={draftDispute}>Draft dispute evidence</button>
+                  {process.env.NODE_ENV !== "production" && <button type="button" onClick={replayDispute}>Replay SIMULATED dispute</button>}
+                </div>
+                {refundStatus && <p role="status">{refundStatus}</p>}
+                {simulationStatus && <p role="status">{simulationStatus}</p>}
+                {disputeDraft && <aside aria-label="Dispute Advocate draft"><b>Dispute Advocate ({disputeDraft.source})</b><p>{disputeDraft.summary}</p></aside>}
                 <section style={{ marginTop: "3rem" }}>
                   <h2>Approval inbox</h2>
                   {approvals.length === 0 ? <p style={{ color: "#b8c0d9" }}>No approval requests.</p> : approvals.map((approval) => (
                     <div key={approval.id} style={{ border: "1px solid #293252", padding: "1rem", marginBottom: ".6rem" }}>
                       <b>{approval.status}</b> — run {approval.run_id}
+                      <p>Total: ${Number(approval.total ?? 0).toFixed(2)}</p>
                       {approval.reason && <p>{approval.reason}</p>}
+                      {approval.policy?.ruleResults?.filter((rule) => !rule.passed).map((rule) => (
+                        <span key={rule.id} style={{ display: "inline-block", marginRight: ".35rem", padding: ".2rem .45rem", borderRadius: 999, background: "#3b3040", color: "#f0c674" }}>
+                          {rule.id}
+                        </span>
+                      ))}
+                      {approval.expires_at && (
+                        <small>
+                          {new Date(approval.expires_at).getTime() > now
+                            ? `Expires in ${Math.max(0, Math.floor((new Date(approval.expires_at).getTime() - now) / 1000))}s`
+                            : "Expired"}
+                        </small>
+                      )}
                       {approval.status === "PENDING" && (
                         <span style={{ display: "flex", gap: ".5rem" }}>
                           <button type="button" onClick={() => resolveApproval(approval.id, "APPROVED")}>Approve</button>
@@ -221,17 +418,7 @@ export default function DashboardPage() {
                     </div>
                   ))}
                 </section>
-                <section style={{ marginTop: "3rem" }}>
-                  <h2>Ledger grid {ledgerValid === null ? "" : ledgerValid ? "— verified" : "— INVALID"}</h2>
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead><tr><th align="left">Sequence</th><th align="left">Timestamp</th><th align="left">Type</th><th align="left">Hash</th></tr></thead>
-                      <tbody>{ledger.map((entry) => (
-                        <tr key={entry.sequence}><td>{entry.sequence}</td><td>{entry.timestamp}</td><td>{entry.type}</td><td style={{ fontFamily: "monospace" }}>{entry.entryHash.slice(0, 16)}…</td></tr>
-                      ))}</tbody>
-                    </table>
-                  </div>
-                </section>
+                <LedgerGrid rows={ledger as LedgerGridRow[]} valid={ledgerValid} onVerify={verifyLedgerNow} />
                 {orderStatus && <p role="status">{orderStatus}</p>}
               </div>
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { draftMandateFromIntent } from "@/core/mandate/parser";
+import { draftMandateFromIntent, draftMandateWithAi } from "@/core/mandate/parser";
+import { useLlm } from "@/core/ai/client";
 
 export async function POST(request: Request) {
   let body: unknown;
@@ -19,7 +20,9 @@ export async function POST(request: Request) {
   }
 
   try {
-    return NextResponse.json(draftMandateFromIntent(owner, intent));
+    return NextResponse.json(useLlm
+      ? await draftMandateWithAi(owner, intent)
+      : { ...draftMandateFromIntent(owner, intent), source: "fallback" });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Mandate draft failed.";
     return NextResponse.json({ error: message }, { status: 422 });

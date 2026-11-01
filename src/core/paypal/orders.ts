@@ -20,6 +20,7 @@ export type PayPalCreatedOrder = {
   id: string;
   status: string;
   links?: Array<{ href: string; rel: string; method: string }>;
+  purchase_units?: Array<{ payments?: { captures?: Array<{ id: string }> } }>;
 };
 
 export function toPayPalOrderRequest(request: OrderRequest): PayPalOrderRequest {
@@ -53,7 +54,7 @@ export async function createSandboxOrder(request: OrderRequest): Promise<PayPalC
       application_context: {
         brand_name: "Steward Sandbox",
         user_action: "PAY_NOW",
-        return_url: `${process.env.APP_BASE_URL ?? "http://localhost:3000"}/api/paypal/return`,
+        return_url: `${process.env.APP_BASE_URL ?? "http://localhost:3000"}/api/paypal/return?runId=${encodeURIComponent(request.runId)}`,
         cancel_url: `${process.env.APP_BASE_URL ?? "http://localhost:3000"}/dashboard?paypal=cancelled`
       }
     })
