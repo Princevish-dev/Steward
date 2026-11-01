@@ -1,5 +1,13 @@
+import { generateText } from "ai";
 import { mandateSchema, type Mandate } from "@/core/mandate/schema";
-import { generateAiObject, NEMOTRON_MODEL, stripReasoningTokens, type AiCallMeta, type AiObjectGenerator } from "@/core/ai/client";
+import {
+  generateAiObject,
+  getModel,
+  NEMOTRON_MODEL,
+  stripReasoningTokens,
+  type AiCallMeta,
+  type AiObjectGenerator
+} from "@/core/ai/client";
 import { mandateAiOutputSchema, type MandateAiOutput } from "@/core/ai/schemas";
 
 export type MandateDraft = {
@@ -10,13 +18,51 @@ export type MandateDraft = {
   ai?: AiCallMeta;
 };
 
+/**
+ * Robust JSON extraction function that strips reasoning tokens (<think>...</think>),
+ * finds the outermost JSON object boundary (first '{' and last '}'),
+ * and validates the resulting JSON against the Zod schema.
+ */
+export function extractMandateAiOutput(text: string): MandateAiOutput {
+  if (!text || typeof text !== "string") {
+    throw new Error("Cannot extract mandate from non-string model output.");
+  }
+
+  // 1. Strip reasoning blocks like <think>...</think> or [THINK]...[/THINK]
+  let cleaned = text
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/\[THINK\][\s\S]*?\[\/THINK\]/gi, "")
+    .trim();
+
+  // 2. Unwrap markdown JSON code fences if present (```json ... ```)
+  const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (codeBlockMatch) {
+    cleaned = codeBlockMatch[1].trim();
+  }
+
+  // 3. Regex isolation: find first '{' and last '}'
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    throw new Error(`No JSON block found in model output: ${text.slice(0, 150)}`);
+  }
+
+  const jsonBlock = cleaned.slice(firstBrace, lastBrace + 1);
+  const parsed = JSON.parse(jsonBlock);
+  return mandateAiOutputSchema.parse(parsed);
+}
+
 export function parseMandateDraft(input: unknown): MandateDraft {
-  let value = input;
-  if (typeof value === "string") {
+  let value: unknown = input;
+  if (typeof input === "string") {
     try {
-      value = JSON.parse(stripReasoningTokens(value));
+      value = extractMandateAiOutput(input);
     } catch {
-      // keep original value for non-object error throw
+      try {
+        value = JSON.parse(stripReasoningTokens(input));
+      } catch {
+        // keep original value for non-object error throw
+      }
     }
   }
 
@@ -119,24 +165,58 @@ function normalizeAiMandate(owner: string, intent: string, output: MandateAiOutp
 export async function draftMandateWithAi(
   owner: string,
   intent: string,
-  generator: AiObjectGenerator = generateAiObject,
+  generator?: AiObjectGenerator,
   model: string = NEMOTRON_MODEL
 ): Promise<MandateDraft> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      const result = await generator({
-        model,
-        schema: mandateAiOutputSchema,
-        system: A1,
-        prompt: `OWNER: ${owner}\nINSTRUCTIONS: ${intent}`
-      });
-      const draft = normalizeAiMandate(owner, intent, result.object);
-      draft.ai = result.meta;
+      let output: MandateAiOutput;
+      let meta: AiCallMeta;
+
+      if (generator && generator !== generateAiObject) {
+        // Custom generator provided (e.g. mock generator in unit tests)
+        const result = await generator({
+          model,
+          schema: mandateAiOutputSchema,
+          system: A1,
+          prompt: `OWNER: ${owner}\nINSTRUCTIONS: ${intent}`
+        });
+        output = result.object;
+        meta = result.meta;
+      } else {
+        // Robust generateText with disabled thinking for strict structured output
+        const started = Date.now();
+        const targetModel = getModel(model);
+        const textResult = await generateText({
+          model: targetModel,
+          system: A1,
+          prompt: `OWNER: ${owner}\nINSTRUCTIONS: ${intent}\nIMPORTANT: Respond with pure JSON only matching schema.`,
+          headers: {
+            "x-enable-thinking": "false" // Specifically disable thinking for structured output
+          },
+          abortSignal: AbortSignal.timeout(15_000)
+        });
+
+        output = extractMandateAiOutput(textResult.text);
+        const inputTokens = textResult.usage?.inputTokens;
+        const outputTokens = textResult.usage?.outputTokens;
+        meta = {
+          model,
+          latencyMs: Date.now() - started,
+          inputTokens,
+          outputTokens,
+          costUsd: 0.0001
+        };
+      }
+
+      const draft = normalizeAiMandate(owner, intent, output);
+      draft.ai = meta;
       return draft;
     } catch (err) {
       console.error("AI mandate draft error:", err);
     }
   }
+
   const fallback = draftMandateFromIntent(owner, intent);
   return {
     ...fallback,

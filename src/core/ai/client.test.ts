@@ -10,7 +10,7 @@ import {
   getModel,
   generateAiObject
 } from "@/core/ai/client";
-import { draftMandateWithAi, parseMandateDraft } from "@/core/mandate/parser";
+import { draftMandateWithAi, parseMandateDraft, extractMandateAiOutput } from "@/core/mandate/parser";
 import { buildCartWithAi } from "@/core/agents/shopper";
 import { reviewPurchase } from "@/core/policy/reviewer";
 import { createDemoMandate } from "@/core/mandate/parser";
@@ -53,6 +53,28 @@ describe("AI safety contracts & NVIDIA Nemotron reasoning integration", () => {
       const raw = "<think>The merchant is trusted and cart is within limits</think>{\"recommend\":\"AUTO\",\"confidence\":0.95}";
       const parsed = extractJsonFromModelOutput(raw, schema);
       expect(parsed).toEqual({ recommend: "AUTO", confidence: 0.95 });
+    });
+
+    it("extracts mandate output using extractMandateAiOutput even with leading thoughts and trailing text", () => {
+      const complexOutput = `<think>
+        The user wants office supplies.
+        Monthly limit is $150.
+        Per item is $30.
+      </think>
+      Sure! Here is the structured mandate draft:
+      \`\`\`json
+      {
+        "mandate": null,
+        "clarifications": ["What is your approval threshold?"],
+        "refusalReason": null
+      }
+      \`\`\`
+      Let me know if you would like to adjust the limits.`;
+
+      const extracted = extractMandateAiOutput(complexOutput);
+      expect(extracted.clarifications).toContain("What is your approval threshold?");
+      expect(extracted.mandate).toBeNull();
+      expect(extracted.refusalReason).toBeNull();
     });
 
     it("parses mandate draft from string with thinking tokens", () => {
@@ -106,6 +128,37 @@ describe("AI safety contracts & NVIDIA Nemotron reasoning integration", () => {
       // Verifies response interception strips <think> tags for clean downstream JSON consumption
       const responseData = await res.json();
       expect(responseData.choices[0].message.content).toBe("{\"success\":true}");
+    });
+
+    it("specifically disables enable_thinking when x-enable-thinking: false header is passed", async () => {
+      let interceptedBody: Record<string, unknown> | null = null;
+
+      const mockFetch: typeof fetch = async (_input, init) => {
+        interceptedBody = JSON.parse(init?.body as string);
+        return new Response(JSON.stringify({
+          id: "chatcmpl-test-2",
+          choices: [{
+            index: 0,
+            message: { role: "assistant", content: "{\"mandate\":null,\"clarifications\":[],\"refusalReason\":null}" }
+          }],
+          usage: { prompt_tokens: 10, completion_tokens: 15, total_tokens: 25 }
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      };
+
+      const customFetch = createNvidiaFetch(mockFetch);
+      await customFetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "x-enable-thinking": "false" },
+        body: JSON.stringify({
+          model: "nvidia/nemotron-3-ultra-550b-a55b",
+          messages: [{ role: "user", content: "Draft mandate" }]
+        })
+      });
+
+      expect(interceptedBody).not.toBeNull();
+      // Verifies enable_thinking is specifically false for structured parsing
+      expect((interceptedBody as any).chat_template_kwargs?.enable_thinking).toBe(false);
+      expect((interceptedBody as any).extra_body?.chat_template_kwargs?.enable_thinking).toBe(false);
     });
   });
 

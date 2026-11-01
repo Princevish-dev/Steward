@@ -20,11 +20,16 @@ export async function POST(request: Request) {
   }
 
   try {
-    return NextResponse.json(useLlm
+    const draft = useLlm
       ? await draftMandateWithAi(owner, intent)
-      : { ...draftMandateFromIntent(owner, intent), source: "fallback" });
+      : { ...draftMandateFromIntent(owner, intent), source: "fallback" };
+    return NextResponse.json(draft);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Mandate draft failed.";
+    const fallback = draftMandateFromIntent(owner, intent);
+    if (fallback.mandate) {
+      return NextResponse.json({ ...fallback, source: "fallback" });
+    }
     return NextResponse.json({ error: message }, { status: 422 });
   }
 }

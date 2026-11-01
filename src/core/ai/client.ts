@@ -58,21 +58,50 @@ export const createNvidiaFetch = (underlyingFetch: typeof fetch = fetch): typeof
   return async (input, init) => {
     let modifiedInit = init;
 
+    // Check if thinking tokens should be enabled (default: true for Risk Reviewer & Dispute Advocate; false for Mandate Parser)
+    let enableThinking = true;
+    if (init?.headers) {
+      if (typeof (init.headers as Headers).get === "function") {
+        if ((init.headers as Headers).get("x-enable-thinking") === "false") {
+          enableThinking = false;
+        }
+      } else if (typeof init.headers === "object") {
+        const headerRecord = init.headers as Record<string, string>;
+        if (headerRecord["x-enable-thinking"] === "false" || headerRecord["X-Enable-Thinking"] === "false") {
+          enableThinking = false;
+        }
+      }
+    }
+
+    // Clean up internal header before dispatching upstream to NVIDIA NIM API
+    if (modifiedInit?.headers) {
+      if (typeof (modifiedInit.headers as Headers).delete === "function") {
+        (modifiedInit.headers as Headers).delete("x-enable-thinking");
+        (modifiedInit.headers as Headers).delete("X-Enable-Thinking");
+      } else if (typeof modifiedInit.headers === "object") {
+        const h = { ...(modifiedInit.headers as Record<string, string>) };
+        delete h["x-enable-thinking"];
+        delete h["X-Enable-Thinking"];
+        modifiedInit = { ...modifiedInit, headers: h };
+      }
+    }
+
     // 1. Request translation: inject thinking tokens configuration into OpenAI-compatible payload
     if (init?.body && typeof init.body === "string" && init.method === "POST") {
       try {
         const parsed = JSON.parse(init.body);
         // Translate Python extra_body={"chat_template_kwargs":{"enable_thinking":True}}
+        // Specifically disabled for structured mandate parser if requested
         parsed.chat_template_kwargs = {
           ...(parsed.chat_template_kwargs || {}),
-          enable_thinking: true
+          enable_thinking: enableThinking
         };
         parsed.extra_body = {
           ...(parsed.extra_body || {}),
-          chat_template_kwargs: { enable_thinking: true }
+          chat_template_kwargs: { enable_thinking: enableThinking }
         };
         modifiedInit = {
-          ...init,
+          ...modifiedInit,
           body: JSON.stringify(parsed)
         };
       } catch {

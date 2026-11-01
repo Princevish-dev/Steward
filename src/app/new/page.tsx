@@ -62,16 +62,30 @@ export default function NewMandatePage() {
     setLoading(true);
     setError(null);
     setMessage("Parsing mandate with AI / deterministic fallback...");
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 20_000);
+
     try {
       const response = await fetch("/api/mandates/draft", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ owner, intent: purpose })
+        body: JSON.stringify({ owner, intent: purpose }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
+
+      if (response.status >= 500) {
+        throw new Error(`Server error (${response.status}): Mandate parsing failed. Please try again or refine instructions.`);
+      }
+
       const result = await readJson<{ mandate?: MandateDraft; clarifications?: string[]; refusalReason?: string; error?: string }>(response);
       if (!response.ok || !result.mandate) {
         setError(result.error ?? result.refusalReason ?? result.clarifications?.[0] ?? "Could not parse mandate.");
-        setStep("parsing");
+        setStep("intent");
         return;
       }
       setDraft(result.mandate);
@@ -81,9 +95,16 @@ export default function NewMandatePage() {
       setMessage("Draft parsed. Review and customize the limits below, then confirm to activate.");
       setStep("review");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not parse the mandate.");
-      setStep("parsing");
+      clearTimeout(timeoutId);
+      const isTimeout = err instanceof Error && (err.name === "AbortError" || err.message.toLowerCase().includes("abort") || err.message.toLowerCase().includes("timeout"));
+      const errorMessage = isTimeout
+        ? "AI mandate parsing timed out after 20 seconds. Please check your instructions and try again."
+        : (err instanceof Error ? err.message : "Could not parse the mandate.");
+      setError(errorMessage);
+      setMessage("");
+      setStep("intent");
     } finally {
+      clearTimeout(timeoutId);
       setLoading(false);
     }
   }, [owner, purpose]);
@@ -223,10 +244,40 @@ export default function NewMandatePage() {
           </div>
         )}
 
+        {error && (
+          <div className="mb-6 p-4 rounded-lg border border-red-500/30 bg-red-950/20 text-red-200 text-sm flex items-start justify-between gap-3 shadow-md" role="alert">
+            <div className="flex items-start gap-2.5">
+              <span className="text-base text-red-400">⚠️</span>
+              <div>
+                <p className="font-semibold text-red-300">Mandate Parsing Error</p>
+                <p className="text-xs text-red-200/90 mt-0.5">{error}</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setError(null)}
+              className="text-xs text-red-400 hover:text-red-200 p-1 rounded transition cursor-pointer"
+              aria-label="Dismiss error"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {step === "parsing" && (
           <div className="flex flex-col items-center justify-center py-16 text-center">
-            <LoadingSkeleton width="64" height="64" className="mx-auto mb-4 rounded-full" />
-            <p className="text-text-secondary">{message || "Parsing mandate..."}</p>
+            {loading ? (
+              <>
+                <LoadingSkeleton width="64" height="64" className="mx-auto mb-4 rounded-full" />
+                <p className="text-text-secondary">{message || "Parsing mandate..."}</p>
+              </>
+            ) : (
+              <div className="space-y-4 max-w-md mx-auto">
+                <p className="text-sm text-red-400">{error || "Mandate parsing could not complete."}</p>
+                <Button variant="secondary" onClick={() => { setStep("intent"); setError(null); }}>
+                  ← Return to Instructions
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
