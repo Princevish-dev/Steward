@@ -25,6 +25,7 @@ type RunResult = {
   flags: Array<{ code: string; quote: string }>;
   ruleResults: RuleResult[];
   catalogSource?: "real" | "fixture";
+  catalogNotice?: string;
   tracking?: { carrier?: string; trackingNumber?: string; status?: string; simulated?: boolean };
   ai?: {
     source?: string;
@@ -387,6 +388,7 @@ export default function DashboardPage() {
                 </h2>
                 <p>Total proposed: ${result.total.toFixed(2)}</p>
                 <p>Channel3 source: <strong>{result.catalogSource ?? "fixture"}</strong>{result.catalogSource !== "real" && " (fixture fallback)"}</p>
+                {result.catalogNotice && <p role="status">{result.catalogNotice}</p>}
                 {result.ai && (
                   <div style={{ color: "#b8c0d9" }}>
                     <p>{result.ai.shopper?.model ? `Parsed by ${result.ai.shopper.model}` : "Parsed by deterministic fallback"}</p>

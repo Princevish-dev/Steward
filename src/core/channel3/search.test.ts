@@ -56,4 +56,19 @@ describe("Channel3 integration", () => {
     expect(second.products).toHaveLength(1);
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
+
+  it("overrides an unknown product category with the deterministic query category", async () => {
+    const result = await searchProductsWithSource("A4 printer paper", 25, {
+      apiKey: "key",
+      apiUrl: "https://channel3.test/v1",
+      queryCategory: "office_supplies",
+      fetcher: vi.fn(async () => new Response(JSON.stringify({ products: [{
+        id: "real-paper", title: "A4 Paper", description: "",
+        category: { slug: "fashion" },
+        offers: [{ url: "https://m/paper", domain: "m", price: { price: 10, currency: "USD" }, availability: "InStock" }]
+      }] }), { status: 200 }))
+    });
+    expect(result.source).toBe("real");
+    expect(result.products[0]).toMatchObject({ category: "office_supplies", price: 10 });
+  });
 });

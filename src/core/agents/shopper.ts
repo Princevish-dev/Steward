@@ -1,6 +1,6 @@
 import type { Product } from "@/core/channel3/types";
 import type { Mandate } from "@/core/mandate/schema";
-import type { Cart } from "@/core/policy/types";
+import type { Cart, Category } from "@/core/policy/types";
 import { getProduct, searchProducts, searchProductsWithSource, sanitizeUntrustedText, type Channel3Source } from "@/core/channel3/search";
 import { generateAiObject, type AiCallMeta, type AiObjectGenerator } from "@/core/ai/client";
 import { cartAiOutputSchema } from "@/core/ai/schemas";
@@ -13,6 +13,7 @@ export type ShopperResult = {
   ai?: AiCallMeta;
   reasoning?: string;
   catalogSource?: Channel3Source;
+  catalogNotice?: string;
 };
 
 function containsInjection(text: string): boolean {
@@ -31,6 +32,18 @@ function itemFromProduct(product: Product, quantity = 1) {
     currency: product.currency,
     stockConfirmedAt: new Date().toISOString()
   };
+}
+
+function categoryForQuery(query: string, allowed: Category[]): Category | undefined {
+  const normalized = query.toLowerCase();
+  const keywords: Array<[Category, string[]]> = [
+    ["office_supplies", ["paper", "printer", "pen", "office", "stationery"]],
+    ["coffee_tea", ["coffee", "tea", "espresso", "roast"]],
+    ["groceries_pantry", ["grocery", "pantry", "food", "snack"]]
+  ];
+  return keywords.find(([category, terms]) =>
+    allowed.includes(category) && terms.some((term) => normalized.includes(term))
+  )?.[0] ?? allowed[0];
 }
 
 export function buildCartFromTask(task: string, mandate: Mandate): ShopperResult {
@@ -97,7 +110,15 @@ export async function buildCartWithAi(
   mandate: Mandate,
   generator: AiObjectGenerator = generateAiObject
 ): Promise<ShopperResult> {
-  const found = await searchProductsWithSource(task, mandate.caps.perItem ?? undefined);
+  const queries = task.split(/\band\b|[,;]/i).map((query) => query.trim()).filter(Boolean).slice(0, 3);
+  const foundResults = await Promise.all(queries.map((query) => searchProductsWithSource(query, mandate.caps.perItem ?? undefined, {
+    queryCategory: categoryForQuery(query, mandate.categories)
+  })));
+  const found = {
+    products: foundResults.flatMap((result) => result.products),
+    source: foundResults.some((result) => result.source === "real") ? "real" as const : "fixture" as const,
+    notice: foundResults.map((result) => result.notice).find(Boolean)
+  };
   const toolProducts = found.products
     .filter((product) => mandate.categories.includes(product.category)).slice(0, 12)
     .map((product) => ({
@@ -115,7 +136,7 @@ export async function buildCartWithAi(
     });
     const flags: ShopperResult["flags"] = [];
     const items = result.object.cart.items.flatMap((item) => {
-      const product = getProduct(item.productId);
+      const product = found.products.find((candidate) => candidate.id === item.productId) ?? getProduct(item.productId);
       if (!product || !mandate.categories.includes(product.category) ||
         mandate.caps.maxQuantityPerItem < item.qty ||
         (mandate.caps.perItem !== null && product.price > mandate.caps.perItem)) return [];
@@ -133,16 +154,23 @@ export async function buildCartWithAi(
       source: "llm",
       ai: result.meta,
       reasoning: "Selected only IDs and prices returned by Channel3 catalog data.",
-      catalogSource: found.source
+      catalogSource: found.source,
+      catalogNotice: found.notice
     };
   } catch {
-    return { ...buildCartFromTask(task, mandate), source: "fallback", catalogSource: found.source };
+    return { ...buildCartFromTask(task, mandate), source: "fallback", catalogSource: found.source, catalogNotice: found.notice };
   }
 }
 
-export async function buildCartFromTaskWithChannel3(task: string, mandate: Mandate): Promise<ShopperResult> {
+export async function buildCartFromTaskWithChannel3(
+  task: string,
+  mandate: Mandate,
+  searcher: typeof searchProductsWithSource = searchProductsWithSource
+): Promise<ShopperResult> {
   const queries = task.split(/\band\b|[,;]/i).map((query) => query.trim()).filter(Boolean).slice(0, 3);
-  const results = await Promise.all(queries.map((query) => searchProductsWithSource(query, mandate.caps.perItem ?? undefined)));
+  const results = await Promise.all(queries.map((query) => searcher(query, mandate.caps.perItem ?? undefined, {
+    queryCategory: categoryForQuery(query, mandate.categories)
+  })));
   const flags: ShopperResult["flags"] = [];
   const items = results.flatMap((result) => {
     const product = result.products.find((item) => mandate.categories.includes(item.category));
@@ -156,6 +184,7 @@ export async function buildCartFromTaskWithChannel3(task: string, mandate: Manda
     queries,
     cart: { items },
     flags,
-    catalogSource: results.some((result) => result.source === "real") ? "real" : "fixture"
+    catalogSource: results.some((result) => result.source === "real") ? "real" : "fixture",
+    catalogNotice: results.map((result) => result.notice).find(Boolean)
   };
 }

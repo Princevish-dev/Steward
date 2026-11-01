@@ -136,6 +136,7 @@ export async function POST(request: Request) {
       cart: shopper.cart,
       flags: shopper.flags,
       catalogSource: shopper.catalogSource ?? "fixture",
+      catalogNotice: shopper.catalogNotice,
       total: policy.total,
       ruleResults: policy.ruleResults,
       ai: persistedPolicy.ai,

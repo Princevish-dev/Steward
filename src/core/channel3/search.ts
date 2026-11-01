@@ -3,6 +3,11 @@ import type { Product } from "@/core/channel3/types";
 import type { Category } from "@/core/policy/types";
 
 export type Channel3Source = "real" | "fixture";
+export type Channel3SearchResult = {
+  products: Product[];
+  source: Channel3Source;
+  notice?: string;
+};
 
 const products = fixtureProducts as Product[];
 const cache = new Map<string, { expiresAt: number; products: Product[] }>();
@@ -65,13 +70,14 @@ type Channel3Options = {
   apiKey?: string;
   apiUrl?: string;
   fetcher?: typeof fetch;
+  queryCategory?: Category;
 };
 
 export async function searchProductsWithSource(
   query: string,
   maxPrice?: number,
   options: Channel3Options = {}
-): Promise<{ products: Product[]; source: Channel3Source }> {
+): Promise<Channel3SearchResult> {
   const apiKey = options.apiKey ?? process.env.CHANNEL3_API_KEY;
   const configuredUrl = options.apiUrl ?? process.env.CHANNEL3_API_URL ?? "https://api.trychannel3.com/v1";
   const apiUrl = configuredUrl.endsWith("/search")
@@ -107,10 +113,15 @@ export async function searchProductsWithSource(
     const mapped = (Array.isArray(body.products) ? body.products : [])
       .filter(isRecord)
       .map(mapChannel3Product)
+      .map((product) => options.queryCategory ? { ...product, category: options.queryCategory } : product)
       .filter((product) => product.availability === "in_stock" && (maxPrice === undefined || product.price <= maxPrice));
 
     if (mapped.length === 0) {
-      return { products: searchProducts(query, maxPrice), source: "fixture" };
+      return {
+        products: searchProducts(query, maxPrice),
+        source: "fixture",
+        notice: "Channel3 returned no usable offers, using fixtures"
+      };
     }
     cache.set(key, { products: mapped, expiresAt: Date.now() + 10 * 60 * 1000 });
     return { products: mapped, source: "real" };
