@@ -83,7 +83,6 @@ export default function DashboardPage() {
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [ledgerValid, setLedgerValid] = useState<boolean | null>(null);
   const [scenario, setScenario] = useState<"within" | "ask" | "over-cap" | "hostile">("within");
-  const [demoStatus, setDemoStatus] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const [mcpKey, setMcpKey] = useState<string | null>(null);
   const [refundStatus, setRefundStatus] = useState<string | null>(null);
@@ -172,33 +171,6 @@ export default function DashboardPage() {
           ? "PayPal Sandbox order created. Buyer approval is required before capture."
           : order.error ?? "Could not create the gated order.");
         if (order.approvalUrl) window.open(order.approvalUrl, "_blank", "noopener,noreferrer");
-      }
-    }
-    await refreshControlRoom();
-  }
-
-  async function seedDemo() {
-    setDemoStatus("Seeding sandbox buyer, active mandate, and sample runs...");
-    const response = await fetch("/api/demo", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ owner })
-    });
-    const body = await response.json() as { mandate?: { id: string }; error?: string };
-    if (!response.ok || !body.mandate) {
-      setDemoStatus(body.error ?? "Demo seed failed.");
-      return;
-    }
-
-    setMandateId(body.mandate.id);
-    setMandateStatus("Mandate ACTIVE — demo data ready.");
-    setDemoStatus("Demo login ready. Sample runs and approval inbox loaded.");
-    const ledgerResponse = await fetch(`/api/ledger/verify?mandateId=${encodeURIComponent(body.mandate.id)}`);
-    if (ledgerResponse.ok) {
-      const ledgerBody = await ledgerResponse.json() as { entries?: LedgerRow[]; verification?: { valid: boolean } };
-      if (ledgerBody.entries && ledgerBody.verification) {
-        setLedger(ledgerBody.entries);
-        setLedgerValid(ledgerBody.verification.valid);
       }
     }
     await refreshControlRoom();
@@ -332,6 +304,11 @@ export default function DashboardPage() {
     if (response.ok) setMandateStatus("Mandate REVOKED — all future payments blocked.");
   }
 
+  async function startFreshSession() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.href = "/new";
+  }
+
   return (
     <main style={{ maxWidth: 1100, margin: "0 auto", padding: "4rem 1.5rem" }}>
       <Link href="/" style={{ color: "#8b9cff" }}>Back to Steward</Link>
@@ -340,8 +317,7 @@ export default function DashboardPage() {
         Submit a task and inspect exactly what the agent proposed and why the deterministic policy engine decided.
       </p>
       <p style={{ color: "#f0c674" }}>PayPal Sandbox + Channel3 real/fixture search, simulated fulfilment.</p>
-      <button type="button" onClick={seedDemo} style={{ padding: ".7rem 1rem" }}>Demo login — seed working data</button>
-      {demoStatus && <p role="status">{demoStatus}</p>}
+      <button type="button" onClick={startFreshSession} style={{ padding: ".7rem 1rem" }}>Start fresh owner session</button>
 
       <form onSubmit={submit} style={{ display: "grid", gap: "1rem", maxWidth: 760, marginTop: "2rem" }}>
         <label>
