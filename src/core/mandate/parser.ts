@@ -1,5 +1,5 @@
 import { mandateSchema, type Mandate } from "@/core/mandate/schema";
-import { generateAiObject, type AiCallMeta, type AiObjectGenerator } from "@/core/ai/client";
+import { generateAiObject, NEMOTRON_MODEL, stripReasoningTokens, type AiCallMeta, type AiObjectGenerator } from "@/core/ai/client";
 import { mandateAiOutputSchema, type MandateAiOutput } from "@/core/ai/schemas";
 
 export type MandateDraft = {
@@ -11,23 +11,36 @@ export type MandateDraft = {
 };
 
 export function parseMandateDraft(input: unknown): MandateDraft {
-  if (!input || typeof input !== "object") {
+  let value = input;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(stripReasoningTokens(value));
+    } catch {
+      // keep original value for non-object error throw
+    }
+  }
+
+  if (!value || typeof value !== "object") {
     throw new Error("Mandate parser returned a non-object response.");
   }
 
-  const value = input as Record<string, unknown>;
-  const clarifications = Array.isArray(value.clarifications)
-    ? value.clarifications.filter((item): item is string => typeof item === "string").slice(0, 3)
+  const record = value as Record<string, unknown>;
+  const clarifications = Array.isArray(record.clarifications)
+    ? record.clarifications.filter((item): item is string => typeof item === "string").slice(0, 3)
     : [];
-  const refusalReason = value.refusalReason === null || typeof value.refusalReason === "string"
-    ? value.refusalReason
+  const refusalReason = record.refusalReason === null || typeof record.refusalReason === "string"
+    ? record.refusalReason
     : null;
 
   if (refusalReason) {
     return { mandate: null, clarifications, refusalReason };
   }
 
-  const parsed = mandateSchema.safeParse(value.mandate);
+  if (record.mandate === null) {
+    return { mandate: null, clarifications, refusalReason: null };
+  }
+
+  const parsed = mandateSchema.safeParse(record.mandate);
   if (!parsed.success) {
     throw new Error(`Invalid mandate draft: ${parsed.error.issues.map((issue) => issue.path.join(".") + " " + issue.message).join("; ")}`);
   }
@@ -106,11 +119,13 @@ function normalizeAiMandate(owner: string, intent: string, output: MandateAiOutp
 export async function draftMandateWithAi(
   owner: string,
   intent: string,
-  generator: AiObjectGenerator = generateAiObject
+  generator: AiObjectGenerator = generateAiObject,
+  model: string = NEMOTRON_MODEL
 ): Promise<MandateDraft> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const result = await generator({
+        model,
         schema: mandateAiOutputSchema,
         system: A1,
         prompt: `OWNER: ${owner}\nINSTRUCTIONS: ${intent}`

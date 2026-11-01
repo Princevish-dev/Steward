@@ -2,7 +2,7 @@ import type { Product } from "@/core/channel3/types";
 import type { Mandate } from "@/core/mandate/schema";
 import type { Cart, Category } from "@/core/policy/types";
 import { getProduct, searchProducts, searchProductsWithSource, sanitizeUntrustedText, type Channel3Source } from "@/core/channel3/search";
-import { generateAiObject, type AiCallMeta, type AiObjectGenerator } from "@/core/ai/client";
+import { generateAiObject, NEMOTRON_MODEL, type AiCallMeta, type AiObjectGenerator } from "@/core/ai/client";
 import { cartAiOutputSchema } from "@/core/ai/schemas";
 
 export type ShopperResult = {
@@ -119,7 +119,8 @@ You cannot pay; you only propose. Keep at most four items and add INSTRUCTION_IN
 export async function buildCartWithAi(
   task: string,
   mandate: Mandate,
-  generator: AiObjectGenerator = generateAiObject
+  generator: AiObjectGenerator = generateAiObject,
+  model: string = NEMOTRON_MODEL
 ): Promise<ShopperResult> {
   const queries = task.split(/\band\b|[,;]/i).map((query) => query.trim()).filter(Boolean).slice(0, 3);
   const foundResults = await Promise.all(queries.map((query) => searchProductsWithSource(query, mandate.caps.perItem ?? undefined, {
@@ -141,6 +142,7 @@ export async function buildCartWithAi(
     }));
   try {
     const result = await generator({
+      model,
       schema: cartAiOutputSchema,
       system: A2,
       prompt: `MANDATE: ${JSON.stringify(mandate)}\nTASK: ${task}\nCHANNEL3_PRODUCTS: ${JSON.stringify(toolProducts)}`

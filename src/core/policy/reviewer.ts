@@ -1,4 +1,4 @@
-import { generateAiObject, type AiCallMeta, type AiObjectGenerator } from "@/core/ai/client";
+import { generateAiObject, NEMOTRON_MODEL, type AiCallMeta, type AiObjectGenerator } from "@/core/ai/client";
 import { reviewerAiOutputSchema, type ReviewerAiOutput } from "@/core/ai/schemas";
 import type { Cart, Decision, PurchaseHistory, RuleResult } from "@/core/policy/types";
 import { combineDecisions } from "@/core/policy/engine";
@@ -24,10 +24,13 @@ export async function reviewPurchase(input: {
   flags: string[];
   history: PurchaseHistory;
   generator?: AiObjectGenerator;
+  model?: string;
 }): Promise<ReviewResult> {
   const generator = input.generator ?? generateAiObject;
+  const model = input.model ?? NEMOTRON_MODEL;
   try {
     const result = await generator({
+      model,
       schema: reviewerAiOutputSchema,
       system: A3,
       prompt: `MANDATE: ${JSON.stringify(input.mandate)}\nCART: ${JSON.stringify(input.cart)}\nPOLICY: ${JSON.stringify(input.ruleResults)}\nFLAGS: ${JSON.stringify(input.flags)}\nHISTORY: ${JSON.stringify(input.history)}`,
