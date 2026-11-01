@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@import "../components/ui/design-tokens.css";
 
 :root {
   color-scheme: dark;
