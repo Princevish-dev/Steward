@@ -10,6 +10,7 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+      HAS_DATABASE: ${{ secrets.DATABASE_URL != '' }}
       SESSION_SECRET: ci-session-secret
       PAYPAL_ENVIRONMENT: SANDBOX
       USE_LLM: "false"
@@ -24,4 +25,9 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npx playwright install --with-deps chromium
-      - run: npm run e2e
+      - name: Run Playwright E2E
+        if: ${{ env.HAS_DATABASE == 'true' }}
+        run: npm run e2e
+      - name: Report skipped E2E
+        if: ${{ env.HAS_DATABASE != 'true' }}
+        run: echo "::warning::Playwright E2E skipped because DATABASE_URL is not configured in repository secrets."
