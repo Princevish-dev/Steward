@@ -24,7 +24,7 @@ const navigation = [
 
 export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const pathname = usePathname();
-  const { user, isAuthenticated, loginDemo, logout } = useSession();
+  const { user, isAuthenticated, logout } = useSession();
 
   return (
     <aside
@@ -68,17 +68,13 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
               </button>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={async () => {
-                await loginDemo();
-                onClose();
-                window.location.href = "/dashboard";
-              }}
-              className="w-full py-1.5 px-3 rounded text-xs font-semibold bg-primary hover:bg-primary-hover text-primary-text transition cursor-pointer text-center"
+            <Link
+              href="/login"
+              onClick={onClose}
+              className="block w-full py-1.5 px-3 rounded text-xs font-semibold bg-primary hover:bg-primary-hover text-primary-text transition cursor-pointer text-center"
             >
-              ⚡ Instant Demo Login
-            </button>
+              Sign In
+            </Link>
           )}
         </div>
 

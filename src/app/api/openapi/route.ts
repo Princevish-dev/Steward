@@ -27,7 +27,8 @@ export async function GET(request: Request) {
     },
     paths: {
       "/api/health": { get: { summary: "Health check" } },
-      "/api/demo": { post: { summary: "Seed demo environment and session" } },
+      "/api/auth/login": { post: { summary: "Authenticate and issue session token" } },
+      "/api/auth/session": { get: { summary: "Read authenticated session user" } },
       "/api/auth/magic-link": { post: { summary: "Issue magic link token" }, get: { summary: "Consume magic link token" } },
       "/api/auth/logout": { post: { summary: "Clear session" } },
       "/api/mandates/draft": { post: { summary: "Parse natural language instructions into mandate draft" } },

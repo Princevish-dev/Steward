@@ -27,27 +27,6 @@ export function useSession() {
     void refresh();
   }, [refresh]);
 
-  const loginDemo = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/demo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ owner: "judge@example.com" })
-      });
-      if (res.ok) {
-        const data = await res.json() as { user?: SessionUser };
-        setUser(data.user ?? { id: "judge@example.com", email: "judge@example.com", role: "judge" });
-        return { ok: true, user: data.user };
-      }
-      return { ok: false, error: "Demo login failed" };
-    } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : "Network error" };
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   const loginWithEmail = useCallback(async (email: string) => {
     setLoading(true);
     try {
@@ -88,9 +67,7 @@ export function useSession() {
     isAuthenticated: Boolean(user),
     loading,
     refresh,
-    loginDemo,
     loginWithEmail,
     logout
   };
 }
-

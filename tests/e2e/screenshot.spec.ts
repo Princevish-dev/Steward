@@ -24,8 +24,8 @@ test.describe("Full Visual QA & Screenshot Matrix", () => {
 
   test.beforeEach(async ({ page }) => {
     if (!seeded) {
-      await page.request.post("/api/demo", {
-        data: { owner: "judge@example.com" }
+      await page.request.post("/api/auth/login", {
+        data: { email: "judge@example.com" }
       }).catch(() => {});
       seeded = true;
     }

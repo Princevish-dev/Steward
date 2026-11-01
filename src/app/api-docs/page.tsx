@@ -49,8 +49,8 @@ export default function ApiDocsPage() {
               </tr>
               <tr>
                 <td className="px-4 py-3 text-xs text-text-secondary font-mono">POST</td>
-                <td className="px-4 py-3 text-sm text-text-primary">/api/demo</td>
-                <td className="px-4 py-3 text-sm text-text-secondary">Seed demo environment</td>
+                <td className="px-4 py-3 text-sm text-text-primary">/api/auth/login</td>
+                <td className="px-4 py-3 text-sm text-text-secondary">Authenticate and issue session token</td>
                 <td className="px-4 py-3 text-xs text-text-secondary">None</td>
               </tr>
               <tr>
