@@ -7,3 +7,4 @@ out
 *.log
 *.tsbuildinfo
 .neon
+test-results/

@@ -1,0 +1,16 @@
+{
+  "name": "Steward AI",
+  "short_name": "Steward",
+  "description": "Give your AI agent a mandate, not your credit card. Mandate-governed autonomous purchasing with deterministic policy engine, PayPal Sandbox settlement, and SHA-256 audit ledger.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b1020",
+  "theme_color": "#8b9cff",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "32x32",
+      "type": "image/svg+xml"
+    }
+  ]
+}

@@ -7,7 +7,21 @@ test.describe("Visual QA screenshots", () => {
   test("landing page desktop", async ({ page }) => {
     await page.setViewportSize(DESKTOP);
     await page.goto("/", { waitUntil: "domcontentloaded", timeout: 60000 });
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(2000);
+
+    const bodyStyle = await page.evaluate(() => {
+      const cs = window.getComputedStyle(document.body);
+      return {
+        backgroundColor: cs.backgroundColor,
+        color: cs.color,
+        fontFamily: cs.fontFamily,
+      };
+    });
+
+    // Dark fintech background (#0b1020) and sans-serif font
+    expect(bodyStyle.backgroundColor).toBe("rgb(11, 16, 32)");
+    expect(bodyStyle.fontFamily.toLowerCase()).toContain("sans-serif");
+
     await page.screenshot({ path: "test-results/homepage-desktop.png", fullPage: true });
   });
 
