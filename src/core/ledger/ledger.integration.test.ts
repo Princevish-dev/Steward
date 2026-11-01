@@ -4,7 +4,7 @@ import { getDatabasePool } from "@/db/client";
 import { recordLedgerEvent, readLedgerForMandate } from "@/core/ledger/store";
 import { verifyLedger } from "@/core/ledger/verify";
 
-const enabled = process.env.LEDGER_INTEGRATION === "true" && Boolean(process.env.DATABASE_URL);
+const enabled = (process.env.LEDGER_INTEGRATION === "true" || process.env.RUN_SANDBOX_TESTS === "1") && Boolean(process.env.DATABASE_URL);
 const describeIntegration = enabled ? describe : describe.skip;
 
 describeIntegration("ledger database invariants", () => {

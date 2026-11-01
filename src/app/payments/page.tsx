@@ -39,6 +39,10 @@ export default function PaymentsPage() {
     setError(null);
     try {
       const response = await fetch("/api/payments");
+      if (response.status === 401) {
+        setPayments([]);
+        return;
+      }
       if (!response.ok) throw new Error(`Failed to load payments (${response.status}).`);
       const body = await readJson<{ payments: PaymentRow[] }>(response);
       setPayments(body.payments ?? []);

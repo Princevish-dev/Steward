@@ -1,4 +1,9 @@
+import fs from "node:fs";
 import { defineConfig } from "vitest/config";
+
+if (fs.existsSync(".env") && typeof process.loadEnvFile === "function") {
+  process.loadEnvFile(".env");
+}
 import { fileURLToPath } from "node:url";
 
 export default defineConfig({

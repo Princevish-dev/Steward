@@ -100,3 +100,19 @@ CREATE TABLE IF NOT EXISTS paypal_webhook_events (
   payload JSONB NOT NULL,
   received_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- User data isolation and high-volume scaling indexes
+ALTER TABLE mandates ADD COLUMN IF NOT EXISTS user_id TEXT;
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS user_id TEXT;
+ALTER TABLE ledger_entries ADD COLUMN IF NOT EXISTS user_id TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_mandates_owner ON mandates (owner);
+CREATE INDEX IF NOT EXISTS idx_mandates_user_id ON mandates (user_id);
+CREATE INDEX IF NOT EXISTS idx_runs_owner ON runs (owner);
+CREATE INDEX IF NOT EXISTS idx_runs_user_id ON runs (user_id);
+CREATE INDEX IF NOT EXISTS idx_runs_mandate_id ON runs (mandate_id);
+CREATE INDEX IF NOT EXISTS idx_ledger_entries_mandate_id ON ledger_entries (mandate_id);
+CREATE INDEX IF NOT EXISTS idx_ledger_entries_user_id ON ledger_entries (user_id);
+CREATE INDEX IF NOT EXISTS idx_payment_orders_status ON payment_orders (status);
+CREATE INDEX IF NOT EXISTS idx_approvals_run_id ON approvals (run_id);
+CREATE INDEX IF NOT EXISTS idx_refunds_order_id ON refunds (order_id);

@@ -46,6 +46,10 @@ export default function OrdersPage() {
     setError(null);
     try {
       const response = await fetch("/api/paypal/orders");
+      if (response.status === 401) {
+        setOrders([]);
+        return;
+      }
       if (!response.ok) throw new Error(`Failed to load orders (${response.status}).`);
       const body = await readJson<{ orders: OrderRow[] }>(response);
       setOrders(body.orders ?? []);

@@ -3,19 +3,19 @@ import type { Mandate } from "@/core/mandate/schema";
 import { recordLedgerEvent } from "@/core/ledger/store";
 import { getDatabasePool } from "@/db/client";
 
-type JsonRecord = Record<string, unknown>;
-
-export async function createMandate(mandate: Mandate): Promise<void> {
+export async function createMandate(mandate: Mandate, userId?: string): Promise<void> {
+  const uid = userId ?? mandate.owner;
   await getDatabasePool().query(
-    `INSERT INTO mandates (id, owner, purpose, definition, status)
-     VALUES ($1, $2, $3, $4::jsonb, $5)`,
-    [mandate.id, mandate.owner, mandate.purpose, JSON.stringify(mandate), mandate.status]
+    `INSERT INTO mandates (id, owner, user_id, purpose, definition, status)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
+    [mandate.id, mandate.owner, uid, mandate.purpose, JSON.stringify(mandate), mandate.status]
   );
   await recordLedgerEvent({
     type: "MANDATE_CREATED",
     runId: "system",
     mandateId: mandate.id,
-    payload: { status: mandate.status, owner: mandate.owner }
+    payload: { status: mandate.status, owner: mandate.owner },
+    userId: uid
   });
 }
 
@@ -29,7 +29,7 @@ export async function getMandate(id: string): Promise<Mandate | null> {
 
 export async function listMandatesForOwner(owner: string): Promise<Array<{ id: string; owner: string; purpose: string; status: string; period: { type: string; budget: number }; caps: { perItem: number | null; perTransaction: number | null; maxQuantityPerItem: number }; askAbove: number | null; categories: string[]; expiresAt: string }>> {
   const result = await getDatabasePool().query(
-    `SELECT definition FROM mandates WHERE owner = $1 ORDER BY created_at ASC`,
+    `SELECT definition FROM mandates WHERE owner = $1 OR user_id = $1 ORDER BY created_at ASC`,
     [owner]
   );
   return result.rows.map((row) => row.definition as { id: string; owner: string; purpose: string; status: string; period: { type: string; budget: number }; caps: { perItem: number | null; perTransaction: number | null; maxQuantityPerItem: number }; askAbove: number | null; categories: string[]; expiresAt: string });
@@ -43,7 +43,7 @@ export async function listRunsForOwner(owner: string) {
                       FROM jsonb_array_elements(r.cart->'items') item), 0) AS total
      FROM runs r
      JOIN mandates m ON m.id = r.mandate_id
-     WHERE m.owner = $1
+     WHERE m.owner = $1 OR m.user_id = $1 OR r.owner = $1 OR r.user_id = $1
      ORDER BY r.created_at DESC LIMIT 200`,
     [owner]
   );
@@ -58,7 +58,7 @@ export async function listPaymentOrdersForOwner(owner: string) {
      FROM payment_orders po
      JOIN runs r ON r.id = po.run_id
      JOIN mandates m ON m.id = r.mandate_id
-     WHERE m.owner = $1
+     WHERE m.owner = $1 OR m.user_id = $1 OR r.owner = $1 OR r.user_id = $1
      ORDER BY po.created_at DESC LIMIT 200`,
     [owner]
   );
@@ -73,7 +73,7 @@ export async function listRefundsForOwner(owner: string) {
      JOIN payment_orders po ON po.id = r.order_id
      JOIN runs ON runs.id = po.run_id
      JOIN mandates m ON m.id = runs.mandate_id
-     WHERE m.owner = $1
+     WHERE m.owner = $1 OR m.user_id = $1 OR runs.owner = $1 OR runs.user_id = $1
      ORDER BY r.created_at DESC LIMIT 200`,
     [owner]
   );
@@ -88,7 +88,7 @@ export async function listTrackingForOwner(owner: string) {
      FROM payment_orders po
      JOIN runs r ON r.id = po.run_id
      JOIN mandates m ON m.id = r.mandate_id
-     WHERE m.owner = $1 AND po.tracking_carrier IS NOT NULL
+     WHERE (m.owner = $1 OR m.user_id = $1 OR r.owner = $1 OR r.user_id = $1) AND po.tracking_carrier IS NOT NULL
      ORDER BY po.created_at DESC LIMIT 200`,
     [owner]
   );
@@ -103,7 +103,7 @@ export async function listDisputesForOwner(owner: string) {
      JOIN payment_orders po ON po.id = d.order_id
      JOIN runs ON runs.id = po.run_id
      JOIN mandates m ON m.id = runs.mandate_id
-     WHERE m.owner = $1
+     WHERE m.owner = $1 OR m.user_id = $1 OR runs.owner = $1 OR runs.user_id = $1
      ORDER BY d.created_at DESC LIMIT 200`,
     [owner]
   );
@@ -124,7 +124,8 @@ export async function setMandateStatus(id: string, status: "ACTIVE" | "REVOKED")
     type: status === "ACTIVE" ? "MANDATE_CONFIRMED" : "MANDATE_REVOKED",
     runId: "system",
     mandateId: id,
-    payload: { status }
+    payload: { status },
+    userId: mandate.owner
   });
   return mandate;
 }
@@ -137,30 +138,35 @@ export async function persistRun(input: {
   cart: unknown;
   policy: unknown;
   cartHash: string;
+  userId?: string;
 }) {
   const pool = getDatabasePool();
+  const userId = input.userId ?? input.mandate.owner;
   await pool.query(
-    `INSERT INTO runs (id, mandate_id, owner, task, decision, cart, policy)
-     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)`,
-    [input.runId, input.mandate.id, input.mandate.owner, input.task, input.decision, JSON.stringify(input.cart), JSON.stringify(input.policy)]
+    `INSERT INTO runs (id, mandate_id, owner, user_id, task, decision, cart, policy)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb)`,
+    [input.runId, input.mandate.id, input.mandate.owner, userId, input.task, input.decision, JSON.stringify(input.cart), JSON.stringify(input.policy)]
   );
   await recordLedgerEvent({
     type: "RUN_STARTED",
     runId: input.runId,
     mandateId: input.mandate.id,
-    payload: { task: input.task }
+    payload: { task: input.task },
+    userId
   });
   await recordLedgerEvent({
     type: "CART_PROPOSED",
     runId: input.runId,
     mandateId: input.mandate.id,
-    payload: { cartHash: input.cartHash }
+    payload: { cartHash: input.cartHash },
+    userId
   });
   await recordLedgerEvent({
     type: "DECISION_MADE",
     runId: input.runId,
     mandateId: input.mandate.id,
-    payload: { decision: input.decision }
+    payload: { decision: input.decision },
+    userId
   });
 }
 
@@ -227,10 +233,11 @@ export async function persistPaymentOrder(input: {
      WHERE run_id = $2`,
     [input.id, input.runId, input.amount, input.status, input.approvalUrl ?? null, input.vaultId ?? null, input.cartHash]
   );
+  const context = await getRunContext(input.runId);
   await recordLedgerEvent({
     type: "ORDER_CREATED",
     runId: input.runId,
-    mandateId: (await getRunContext(input.runId))?.mandate_id ?? "unknown",
+    mandateId: context?.mandate_id ?? "unknown",
     payload: { orderId: input.id, amount: input.amount }
   });
 }
@@ -253,26 +260,26 @@ export async function markOrderCaptured(runId: string, captureId: string | null,
 }
 
 export async function persistTracking(runId: string, tracking: { carrier: string; trackingNumber: string; status: string }) {
-    await getDatabasePool().query(
-      "UPDATE payment_orders SET tracking_carrier = $2, tracking_number = $3, tracking_status = $4, updated_at = now() WHERE run_id = $1",
-      [runId, tracking.carrier, tracking.trackingNumber, tracking.status]
-    );
-    const context = await getRunContext(runId);
-    if (context) await recordLedgerEvent({
-      type: "TRACKING_ADDED",
-      runId,
-      mandateId: context.mandate_id,
-      payload: { orderId: context.order_id, carrier: tracking.carrier, trackingNumber: tracking.trackingNumber, status: tracking.status, simulated: true }
-    });
-  }
+  await getDatabasePool().query(
+    "UPDATE payment_orders SET tracking_carrier = $2, tracking_number = $3, tracking_status = $4, updated_at = now() WHERE run_id = $1",
+    [runId, tracking.carrier, tracking.trackingNumber, tracking.status]
+  );
+  const context = await getRunContext(runId);
+  if (context) await recordLedgerEvent({
+    type: "TRACKING_ADDED",
+    runId,
+    mandateId: context.mandate_id,
+    payload: { orderId: context.order_id, carrier: tracking.carrier, trackingNumber: tracking.trackingNumber, status: tracking.status, simulated: true }
+  });
+}
 
 export async function claimWebhookEvent(eventId: string, eventType: string, payload: unknown): Promise<boolean> {
-    const result = await getDatabasePool().query(
-      `INSERT INTO paypal_webhook_events (event_id, event_type, payload)
-       VALUES ($1, $2, $3::jsonb) ON CONFLICT (event_id) DO NOTHING RETURNING event_id`,
-      [eventId, eventType, JSON.stringify(payload)]
-    );
-    return result.rowCount === 1;
+  const result = await getDatabasePool().query(
+    `INSERT INTO paypal_webhook_events (event_id, event_type, payload)
+     VALUES ($1, $2, $3::jsonb) ON CONFLICT (event_id) DO NOTHING RETURNING event_id`,
+    [eventId, eventType, JSON.stringify(payload)]
+  );
+  return result.rowCount === 1;
 }
 
 export async function createApproval(runId: string, reason: string) {
@@ -299,7 +306,7 @@ export async function listApprovals(owner?: string) {
                       FROM jsonb_array_elements(r.cart->'items') item), 0) AS total,
             r.policy
      FROM approvals a JOIN runs r ON r.id = a.run_id JOIN mandates m ON m.id = r.mandate_id
-     WHERE ($1::text IS NULL OR m.owner = $1)
+     WHERE ($1::text IS NULL OR m.owner = $1 OR m.user_id = $1 OR r.owner = $1 OR r.user_id = $1)
      ORDER BY a.created_at DESC LIMIT 100`,
     [owner ?? null]
   );
@@ -312,7 +319,7 @@ export async function resolveApproval(id: string, status: "APPROVED" | "REJECTED
      WHERE id = $1 AND status = 'PENDING' AND expires_at > now()
        AND ($4::text IS NULL OR EXISTS (
          SELECT 1 FROM runs r JOIN mandates m ON m.id = r.mandate_id
-         WHERE r.id = approvals.run_id AND m.owner = $4
+         WHERE r.id = approvals.run_id AND (m.owner = $4 OR m.user_id = $4 OR r.owner = $4 OR r.user_id = $4)
        ))
      RETURNING id, run_id, status, reviewer, reason, created_at, resolved_at`,
     [id, status, reviewer, owner ?? null]
@@ -324,7 +331,8 @@ export async function resolveApproval(id: string, status: "APPROVED" | "REJECTED
       type: status === "APPROVED" ? "APPROVAL_APPROVED" : "APPROVAL_REJECTED",
       runId: approval.run_id,
       mandateId: context?.mandate_id ?? "unknown",
-      payload: { approvalId: id, reviewer }
+      payload: { approvalId: id, reviewer },
+      userId: owner
     });
   }
   return approval;
@@ -364,7 +372,7 @@ export async function listMandateApiKeysForOwner(owner: string) {
     `SELECT k.id, k.mandate_id, k.key_prefix, k.created_at, k.revoked_at, m.owner
      FROM mandate_api_keys k
      JOIN mandates m ON m.id = k.mandate_id
-     WHERE m.owner = $1
+     WHERE m.owner = $1 OR m.user_id = $1
      ORDER BY k.created_at DESC LIMIT 200`,
     [owner]
   );

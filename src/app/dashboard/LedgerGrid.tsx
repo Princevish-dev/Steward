@@ -104,7 +104,7 @@ export default function LedgerGrid({
           theme={themeQuartz}
           quickFilterText={quickFilter}
           defaultColDef={{ resizable: true }}
-          getRowId={(params) => String(params.data.sequence)}
+          getRowId={(params) => String(params.data?.sequence ?? Math.random())}
           onRowClicked={(event) => setSelected(event.data ?? null)}
           animateRows
           pagination

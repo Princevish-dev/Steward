@@ -10,7 +10,12 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton";
 import { PageHeader } from "@/components/ui/page-header";
 import { DataTable } from "@/components/ui/data-table";
-import LedgerGrid from "./LedgerGrid";
+import dynamic from "next/dynamic";
+
+const LedgerGrid = dynamic(() => import("./LedgerGrid"), {
+  ssr: false,
+  loading: () => <div className="h-64 rounded-lg bg-surface animate-pulse" />
+});
 
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();

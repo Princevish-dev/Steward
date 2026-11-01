@@ -84,7 +84,7 @@ describe("Live AI proof verification", () => {
     // Save metrics for README table
     fs.mkdirSync("docs", { recursive: true });
     fs.writeFileSync("docs/ai-proof-metrics.json", JSON.stringify(metrics, null, 2));
-  }, 45000);
+  }, 120_000);
 
   it("ensures fallbacks work deterministically when LLM fails or is disabled", async () => {
     // 1. Mandate Parser Fallback

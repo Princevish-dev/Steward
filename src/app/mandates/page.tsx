@@ -42,6 +42,10 @@ export default function MandatesPage() {
     setError(null);
     try {
       const response = await fetch("/api/mandates");
+      if (response.status === 401) {
+        setMandates([]);
+        return;
+      }
       if (!response.ok) throw new Error(`Failed to load mandates (${response.status}).`);
       const body = await readJson<{ mandates: MandateRow[] }>(response);
       setMandates(body.mandates ?? []);

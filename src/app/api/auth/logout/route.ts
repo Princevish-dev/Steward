@@ -1,25 +1,14 @@
 import { NextResponse } from "next/server";
+import { clearSessionCookie } from "@/core/auth/session";
 
-export async function POST(request: Request) {
+export async function POST(_request: Request) {
   const response = NextResponse.json({ ok: true });
-  response.cookies.set("steward_session", "", {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 0
-  });
+  response.cookies.set(clearSessionCookie());
   return response;
 }
 
 export async function GET(request: Request) {
-  const response = NextResponse.redirect(new URL("/new", request.url));
-  response.cookies.set("steward_session", "", {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 0
-  });
+  const response = NextResponse.redirect(new URL("/", request.url));
+  response.cookies.set(clearSessionCookie());
   return response;
 }

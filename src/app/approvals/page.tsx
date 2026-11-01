@@ -133,7 +133,7 @@ export default function ApprovalsPage() {
                     {approval.total !== undefined && (
                       <p className="text-sm font-semibold text-text-primary">${approval.total.toFixed(2)}</p>
                     )}
-                    <p className="text-xs text-text-muted">{new Date(approval.expires_at ?? Date.now()).toLocaleDateString()}</p>
+                    <p className="text-xs text-text-muted">{approval.expires_at ? new Date(approval.expires_at).toISOString().slice(0, 10) : "24h expiry"}</p>
                   </div>
                 </div>
                 <div className="flex gap-2">
