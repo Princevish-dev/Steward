@@ -4,7 +4,7 @@ export default function Home() {
   return (
     <main style={{ maxWidth: 960, margin: "0 auto", padding: "6rem 1.5rem" }}>
       <p style={{ color: "#8b9cff", fontWeight: 700, letterSpacing: "0.12em", marginBottom: ".75rem" }}>
-        STEWARD • PAYPAL AI HACKATHON
+        STEWARD
       </p>
       <h1 style={{ fontSize: "2.75rem", lineHeight: 1.2, margin: "0 0 1.25rem", fontWeight: 800 }}>
         Give your AI agent a mandate, not your credit card.
