@@ -167,13 +167,14 @@ export async function markOrderCaptured(runId: string, captureId: string | null,
   );
   const context = await getRunContext(runId);
   if (context) {
-    await recordLedgerEvent({
+    return recordLedgerEvent({
       type: "ORDER_CAPTURED",
       runId,
       mandateId: context.mandate_id,
       payload: { orderId: context.order_id, captureId, amount, merchant: "paypal-sandbox" }
     });
   }
+  return null;
 }
 
 export async function persistTracking(runId: string, tracking: { carrier: string; trackingNumber: string; status: string }) {

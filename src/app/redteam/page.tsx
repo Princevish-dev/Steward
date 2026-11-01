@@ -4,25 +4,39 @@ import { useState } from "react";
 import { redTeamFixtures } from "@/core/agents/redteam";
 import Link from "next/link";
 
+type RedTeamResult = {
+  decision: string;
+  timeline: string[];
+  sanitized: { flagged: boolean; sanitized: string };
+  ruleResults: Array<{ id: string; passed: boolean; reason: string }>;
+};
+
 export default function RedTeamPage() {
-  const [results, setResults] = useState<Record<string, {
-    decision: string;
-    timeline: string[];
-    sanitized: { flagged: boolean; sanitized: string };
-    ruleResults: Array<{ id: string; passed: boolean; reason: string }>;
-  }>>({});
+  const [results, setResults] = useState<Record<string, RedTeamResult>>({});
   const [running, setRunning] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function runFixture(fixtureId: string) {
     setRunning(fixtureId);
-    const response = await fetch("/api/redteam", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ fixtureId })
-    });
-    const result = await response.json();
-    if (response.ok) setResults((current) => ({ ...current, [fixtureId]: result }));
-    setRunning(null);
+    setError(null);
+    try {
+      const response = await fetch("/api/redteam", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ fixtureId })
+      });
+      const text = await response.text();
+      const result = text ? JSON.parse(text) as Partial<RedTeamResult> & { error?: string } : {};
+      if (!response.ok) throw new Error(result.error ?? "Fixture could not be evaluated.");
+      if (!result.decision || !result.timeline || !result.sanitized || !result.ruleResults) {
+        throw new Error("The safety API returned an incomplete fixture result.");
+      }
+      setResults((current) => ({ ...current, [fixtureId]: result as RedTeamResult }));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Fixture could not be evaluated.");
+    } finally {
+      setRunning(null);
+    }
   }
 
   return (
@@ -33,6 +47,8 @@ export default function RedTeamPage() {
         Product text is untrusted data. These fixtures must never increase spending authority.
       </p>
       <p style={{ color: "#f0c674" }}>PayPal Sandbox + fixture-backed Channel3 demo, simulated fulfilment.</p>
+      <p style={{ color: "#b8c0d9" }}>Run each fixture to see sanitization, the deterministic decision, and all 13 rule outcomes.</p>
+      {error && <p role="alert" style={{ color: "#ff7b8b" }}>{error}</p>}
       <div style={{ display: "grid", gap: "1rem", marginTop: "2rem" }}>
         {redTeamFixtures.map((fixture) => (
           <article key={fixture.id} style={{ border: "1px solid #293252", borderRadius: 10, padding: "1rem" }}>

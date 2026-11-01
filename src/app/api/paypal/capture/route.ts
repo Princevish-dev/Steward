@@ -31,10 +31,10 @@ export async function POST(request: Request) {
     const captureId = order.purchase_units?.[0]?.payments?.captures?.[0]?.id ?? null;
     const amount = (context.cart as { items: Array<{ unitPrice: number; quantity: number }> }).items
       .reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-    await markOrderCaptured(body.runId, captureId, amount);
+    const captureLedger = await markOrderCaptured(body.runId, captureId, amount);
     const tracking = await addShipmentTracking(order.id, body.runId);
     await persistTracking(body.runId, tracking);
-    return NextResponse.json({ orderId: order.id, status: order.status, captureId, tracking });
+    return NextResponse.json({ orderId: order.id, status: order.status, captureId, tracking, ledgerSequence: captureLedger?.sequence });
   } catch (error) {
     const message = error instanceof Error ? error.message : "PayPal capture failed.";
     const status = message === "MANDATE_REVOKED" || message === "PAYMENT_BLOCKED" ? 403 : 502;

@@ -66,6 +66,16 @@ const decisionColor = {
   BLOCK: "#ff7b8b"
 };
 
+async function readJson<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  if (!text) return {} as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`Steward returned an invalid response (${response.status}).`);
+  }
+}
+
 export default function DashboardPage() {
   const [owner, setOwner] = useState("");
   const [task, setTask] = useState("");
@@ -88,6 +98,7 @@ export default function DashboardPage() {
   const [refundStatus, setRefundStatus] = useState<string | null>(null);
   const [disputeDraft, setDisputeDraft] = useState<{ summary: string; source: string } | null>(null);
   const [simulationStatus, setSimulationStatus] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const refreshControlRoom = useCallback(async () => {
     const currentMandateId = mandateId ?? new URLSearchParams(window.location.search).get("mandateId");
@@ -97,9 +108,12 @@ export default function DashboardPage() {
         ? fetch(`/api/ledger/verify?mandateId=${encodeURIComponent(currentMandateId)}`)
         : Promise.resolve(new Response(null, { status: 204 }))
     ]);
-    if (approvalResponse.ok) setApprovals((await approvalResponse.json() as { approvals: Approval[] }).approvals);
+    if (approvalResponse.ok) {
+      const body = await readJson<{ approvals?: Approval[] }>(approvalResponse);
+      setApprovals(body.approvals ?? []);
+    }
     if (ledgerResponse.ok) {
-      const body = await ledgerResponse.json() as { entries?: LedgerRow[]; verification?: { valid: boolean } };
+      const body = await readJson<{ entries?: LedgerRow[]; verification?: { valid: boolean } }>(ledgerResponse);
       if (body.entries && body.verification) {
         setLedger(body.entries);
         setLedgerValid(body.verification.valid);
@@ -141,7 +155,7 @@ export default function DashboardPage() {
     if (!mandateId) return;
     const response = await fetch(`/api/ledger/verify?mandateId=${encodeURIComponent(mandateId)}`);
     if (response.ok) {
-      const body = await response.json() as { entries?: LedgerRow[]; verification?: { valid: boolean } };
+      const body = await readJson<{ entries?: LedgerRow[]; verification?: { valid: boolean } }>(response);
       if (body.entries && body.verification) {
         setLedger(body.entries);
         setLedgerValid(body.verification.valid);
@@ -150,41 +164,58 @@ export default function DashboardPage() {
   }
 
   async function resolveApproval(id: string, status: "APPROVED" | "REJECTED") {
-    const response = await fetch("/api/approvals", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id, status, reviewer: owner })
-    });
-    if (response.ok && status === "APPROVED") {
-      const approval = approvals.find((item) => item.id === id);
-      if (approval) {
-        setResult((current) => current);
-        setOrderStatus("Approval recorded. Creating a gated PayPal order...");
-        const orderResponse = await fetch("/api/paypal/orders", {
+    setActionLoading(`approval-${id}`);
+    try {
+      const response = await fetch("/api/approvals", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id, status, reviewer: owner })
+      });
+      const responseBody = await readJson<{ error?: string }>(response);
+      if (!response.ok) throw new Error(responseBody.error ?? "Could not resolve approval.");
+      if (status === "APPROVED") {
+        const approval = approvals.find((item) => item.id === id);
+        if (approval) {
+          setOrderStatus("Approval recorded. Creating a gated PayPal order...");
+          const orderResponse = await fetch("/api/paypal/orders", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ runId: approval.run_id })
-        });
-        const order = await orderResponse.json() as { approvalUrl?: string; error?: string };
+          });
+          const order = await readJson<{ approvalUrl?: string; error?: string }>(orderResponse);
+          if (!orderResponse.ok) throw new Error(order.error ?? "Could not create the gated order.");
         setApprovalUrl(order.approvalUrl ?? null);
-        setOrderStatus(orderResponse.ok
-          ? "PayPal Sandbox order created. Buyer approval is required before capture."
-          : order.error ?? "Could not create the gated order.");
+          setOrderStatus("PayPal Sandbox order created. Buyer approval is required before capture.");
         if (order.approvalUrl) window.open(order.approvalUrl, "_blank", "noopener,noreferrer");
+        }
+      } else {
+        setOrderStatus("Approval rejected. No PayPal order was created.");
       }
+      await refreshControlRoom();
+    } catch (error) {
+      setOrderStatus(error instanceof Error ? error.message : "Approval action failed.");
+    } finally {
+      setActionLoading(null);
     }
-    await refreshControlRoom();
   }
 
   async function createMcpKey() {
     if (!mandateId) return;
-    const response = await fetch("/api/mcp/keys", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ mandateId })
-    });
-    const body = await response.json() as { key?: string; error?: string };
-    setMcpKey(response.ok ? body.key ?? null : body.error ?? "Could not create MCP key.");
+    setActionLoading("mcp");
+    try {
+      const response = await fetch("/api/mcp/keys", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mandateId })
+      });
+      const body = await readJson<{ key?: string; error?: string }>(response);
+      if (!response.ok) throw new Error(body.error ?? "Could not create MCP key.");
+      setMcpKey(body.key ?? null);
+    } catch (error) {
+      setMcpKey(error instanceof Error ? error.message : "Could not create MCP key.");
+    } finally {
+      setActionLoading(null);
+    }
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -199,10 +230,10 @@ export default function DashboardPage() {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ owner, intent: task })
         });
-        const draft = await draftResponse.json() as { mandate?: { id: string }; error?: string };
+        const draft = await readJson<{ mandate?: { id: string }; error?: string }>(draftResponse);
         if (!draftResponse.ok || !draft.mandate) throw new Error(draft.error ?? "Could not create mandate draft.");
         const confirmResponse = await fetch(`/api/mandates/${draft.mandate.id}/confirm`, { method: "POST" });
-        const confirmed = await confirmResponse.json() as { mandate?: { id: string }; error?: string };
+        const confirmed = await readJson<{ mandate?: { id: string }; error?: string }>(confirmResponse);
         if (!confirmResponse.ok || !confirmed.mandate) throw new Error(confirmed.error ?? "Could not confirm mandate.");
         activeMandateId = confirmed.mandate.id;
         setMandateId(activeMandateId);
@@ -213,10 +244,11 @@ export default function DashboardPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ mandateId: activeMandateId, task, scenario })
       });
-      const body = await response.json() as RunResult;
+      const body = await readJson<RunResult>(response);
       setResult(response.ok ? body : { ...body, error: body.error ?? "Run failed." });
-    } catch {
-      setResult({ error: "Could not reach the Steward API." } as RunResult);
+      if (response.ok) await refreshControlRoom();
+    } catch (error) {
+      setResult({ error: error instanceof Error ? error.message : "Could not reach the Steward API." } as RunResult);
     } finally {
       setLoading(false);
     }
@@ -224,84 +256,131 @@ export default function DashboardPage() {
   }
 
   async function checkPayPal() {
+    setActionLoading("paypal-health");
     setPaypalStatus("Checking PayPal Sandbox...");
-    const response = await fetch("/api/paypal/health");
-    const body = await response.json() as { connected?: boolean; error?: string };
-    setPaypalStatus(body.connected ? "PayPal Sandbox connected." : body.error ?? "PayPal connection failed.");
+    try {
+      const response = await fetch("/api/paypal/health");
+      const body = await readJson<{ connected?: boolean; error?: string }>(response);
+      setPaypalStatus(body.connected ? "PayPal Sandbox connected." : body.error ?? "PayPal connection failed.");
+    } catch (error) {
+      setPaypalStatus(error instanceof Error ? error.message : "PayPal connection failed.");
+    } finally {
+      setActionLoading(null);
+    }
   }
 
   async function createPayPalOrder() {
     if (!result || result.decision === "BLOCK" || result.total <= 0) return;
+    setActionLoading("create-order");
     setOrderStatus("Creating PayPal Sandbox order...");
-    const response = await fetch("/api/paypal/orders", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ runId: result.runId })
-    });
-    const body = await response.json() as { approvalUrl?: string; orderId?: string; error?: string };
-    if (!response.ok) {
-      setOrderStatus(body.error ?? "Could not create PayPal order.");
-      return;
+    try {
+      const response = await fetch("/api/paypal/orders", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ runId: result.runId })
+      });
+      const body = await readJson<{ approvalUrl?: string; orderId?: string; error?: string }>(response);
+      if (!response.ok) throw new Error(body.error ?? "Could not create PayPal order.");
+      setApprovalUrl(body.approvalUrl ?? null);
+      setOrderStatus(`Order ${body.orderId} created. ${body.approvalUrl ? "Open the approval link to continue." : ""}`);
+      if (body.approvalUrl) window.open(body.approvalUrl, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      setOrderStatus(error instanceof Error ? error.message : "Could not create PayPal order.");
+    } finally {
+      setActionLoading(null);
     }
-
-    setApprovalUrl(body.approvalUrl ?? null);
-    setOrderStatus(`Order ${body.orderId} created. ${body.approvalUrl ? "Open the approval link to continue." : ""}`);
-    if (body.approvalUrl) window.open(body.approvalUrl, "_blank", "noopener,noreferrer");
   }
 
   async function capturePayPalOrder() {
     if (!approvedOrderId) return;
+    setActionLoading("capture");
     setCaptureStatus("Capturing PayPal Sandbox order...");
-    const response = await fetch("/api/paypal/capture", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ runId: approvedRunId ?? result?.runId })
-    });
-    const body = await response.json() as { status?: string; ledgerSequence?: number; error?: string; tracking?: { carrier?: string; trackingNumber?: string; status?: string; simulated?: boolean } };
-    if (response.ok && body.tracking) setResult((current) => current ? { ...current, tracking: body.tracking } : current);
-    setCaptureStatus(response.ok
-      ? `Payment ${body.status}. Ledger entry #${body.ledgerSequence}.`
-      : body.error ?? "Payment capture failed.");
+    try {
+      const response = await fetch("/api/paypal/capture", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ runId: approvedRunId ?? result?.runId })
+      });
+      const body = await readJson<{ status?: string; ledgerSequence?: number; error?: string; tracking?: { carrier?: string; trackingNumber?: string; status?: string; simulated?: boolean } }>(response);
+      if (!response.ok) throw new Error(body.error ?? "Payment capture failed.");
+      if (body.tracking) setResult((current) => current ? { ...current, tracking: body.tracking } : current);
+      setCaptureStatus(`Payment ${body.status}. Ledger entry #${body.ledgerSequence ?? "recorded"}.`);
+      await refreshControlRoom();
+    } catch (error) {
+      setCaptureStatus(error instanceof Error ? error.message : "Payment capture failed.");
+    } finally {
+      setActionLoading(null);
+    }
   }
 
   async function refundPayment() {
     if (!result) return;
+    setActionLoading("refund");
     setRefundStatus("Issuing Sandbox refund...");
-    const response = await fetch("/api/paypal/refund", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ runId: result.runId })
-    });
-    const body = await response.json() as { refundId?: string; error?: string };
-    setRefundStatus(response.ok ? `Refund issued: ${body.refundId}` : body.error ?? "Refund failed.");
+    try {
+      const response = await fetch("/api/paypal/refund", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ runId: result.runId })
+      });
+      const body = await readJson<{ refundId?: string; error?: string }>(response);
+      setRefundStatus(response.ok ? `Refund issued: ${body.refundId}` : body.error ?? "Refund failed.");
+    } catch (error) {
+      setRefundStatus(error instanceof Error ? error.message : "Refund failed.");
+    } finally {
+      setActionLoading(null);
+    }
   }
 
   async function draftDispute() {
     if (!result) return;
-    const response = await fetch("/api/disputes/advocate", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ runId: result.runId })
-    });
-    const body = await response.json() as { draft?: { summary: string; source: string }; error?: string };
-    setDisputeDraft(response.ok ? body.draft ?? null : { summary: body.error ?? "Dispute draft failed.", source: "fallback" });
+    setActionLoading("dispute");
+    try {
+      const response = await fetch("/api/disputes/advocate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ runId: result.runId })
+      });
+      const body = await readJson<{ draft?: { summary: string; source: string }; error?: string }>(response);
+      setDisputeDraft(response.ok ? body.draft ?? null : { summary: body.error ?? "Dispute draft failed.", source: "fallback" });
+    } catch (error) {
+      setDisputeDraft({ summary: error instanceof Error ? error.message : "Dispute draft failed.", source: "fallback" });
+    } finally {
+      setActionLoading(null);
+    }
   }
 
   async function replayDispute() {
+    setActionLoading("dispute-simulation");
     setSimulationStatus("Replaying SIMULATED dispute webhook...");
-    const response = await fetch("/api/paypal/webhook/replay", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ runId: result?.runId })
-    });
-    const body = await response.json() as { accepted?: boolean; error?: string };
-    setSimulationStatus(response.ok ? "SIMULATED dispute webhook accepted." : body.error ?? "Simulation failed.");
+    try {
+      const response = await fetch("/api/paypal/webhook/replay", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ runId: result?.runId })
+      });
+      const body = await readJson<{ accepted?: boolean; error?: string }>(response);
+      setSimulationStatus(response.ok ? "SIMULATED dispute webhook accepted." : body.error ?? "Simulation failed.");
+    } catch (error) {
+      setSimulationStatus(error instanceof Error ? error.message : "Simulation failed.");
+    } finally {
+      setActionLoading(null);
+    }
   }
 
   async function revokeMandate() {
     if (!mandateId) return;
-    const response = await fetch(`/api/mandates/${mandateId}/revoke`, { method: "POST" });
-    if (response.ok) setMandateStatus("Mandate REVOKED — all future payments blocked.");
+    setActionLoading("revoke");
+    try {
+      const response = await fetch(`/api/mandates/${mandateId}/revoke`, { method: "POST" });
+      const body = await readJson<{ error?: string }>(response);
+      if (!response.ok) throw new Error(body.error ?? "Could not revoke mandate.");
+      setMandateStatus("Mandate REVOKED — all future payments blocked.");
+    } catch (error) {
+      setMandateStatus(error instanceof Error ? error.message : "Could not revoke mandate.");
+    } finally {
+      setActionLoading(null);
+    }
   }
 
   async function startFreshSession() {
@@ -317,7 +396,8 @@ export default function DashboardPage() {
         Submit a task and inspect exactly what the agent proposed and why the deterministic policy engine decided.
       </p>
       <p style={{ color: "#f0c674" }}>PayPal Sandbox + Channel3 real/fixture search, simulated fulfilment.</p>
-      <button type="button" onClick={startFreshSession} style={{ padding: ".7rem 1rem" }}>Start fresh owner session</button>
+      <p style={{ color: "#b8c0d9" }}>Run Steward lets AI propose; deterministic policy decides; no payment happens without a stored valid decision.</p>
+      <button type="button" onClick={startFreshSession} title="Clear the current owner session and start a new mandate" style={{ padding: ".7rem 1rem" }}>Start fresh owner session</button>
 
       <form onSubmit={submit} style={{ display: "grid", gap: "1rem", maxWidth: 760, marginTop: "2rem" }}>
         <label>
@@ -340,23 +420,24 @@ export default function DashboardPage() {
             <option value="hostile">Hostile product (BLOCK)</option>
           </select>
         </label>
-        <button type="submit" disabled={loading} style={{ width: "fit-content", padding: ".7rem 1rem", position: "relative", zIndex: 1 }}>
+        <button type="submit" disabled={loading} title={loading ? "Waiting for policy evaluation" : "Ask the agent to propose a cart and run all policy checks"} style={{ width: "fit-content", padding: ".7rem 1rem", position: "relative", zIndex: 1 }}>
           {loading ? "Evaluating..." : "Run Steward"}
         </button>
       </form>
-      <button type="button" onClick={checkPayPal} style={{ marginTop: "1rem", padding: ".7rem 1rem" }}>
-        Check PayPal Sandbox
+      <button type="button" onClick={checkPayPal} disabled={actionLoading === "paypal-health"} title="Check whether PayPal Sandbox credentials are configured" style={{ marginTop: "1rem", padding: ".7rem 1rem" }}>
+        {actionLoading === "paypal-health" ? "Checking..." : "Check PayPal Sandbox"}
       </button>
-      <button type="button" onClick={revokeMandate} disabled={!mandateId} style={{ marginTop: "1rem", marginLeft: ".5rem", padding: ".7rem 1rem" }}>
+      <button type="button" onClick={revokeMandate} disabled={!mandateId || actionLoading === "revoke"} title={mandateId ? "Permanently block future payments for this mandate" : "Run a mandate first"} style={{ marginTop: "1rem", marginLeft: ".5rem", padding: ".7rem 1rem" }}>
         Kill switch: revoke mandate
       </button>
       <p role="status">{mandateStatus}</p>
-      <button type="button" onClick={createMcpKey} disabled={!mandateId} style={{ padding: ".7rem 1rem" }}>
-        Create mandate MCP key
+      <button type="button" onClick={createMcpKey} disabled={!mandateId || actionLoading === "mcp"} title={mandateId ? "Create a mandate-scoped key; it is shown once" : "Run a mandate first"} style={{ padding: ".7rem 1rem" }}>
+        {actionLoading === "mcp" ? "Creating key..." : "Create mandate MCP key"}
       </button>
       {mcpKey && <p role="status">Copy this key now; it is shown once: <code>{mcpKey}</code></p>}
       <section aria-label="MCP tools" style={{ marginTop: "1.5rem", border: "1px solid #293252", borderRadius: 8, padding: "1rem", maxWidth: 760 }}>
         <h2>MCP tools</h2>
+        <p>These four tools let an external agent propose and inspect purchases without bypassing the same mandate and payment gate.</p>
         <p>External agents can use these mandate-scoped tools:</p>
         <ul>
           <li><code>propose_purchase</code></li>
@@ -371,8 +452,8 @@ export default function DashboardPage() {
         <section style={{ marginTop: "2rem", border: "1px solid #6ee7b7", borderRadius: 10, padding: "1rem" }}>
           <strong>Buyer approval received</strong>
           <p>Order: {approvedOrderId}</p>
-          <button type="button" onClick={capturePayPalOrder} style={{ padding: ".7rem 1rem" }}>
-            Capture approved payment
+          <button type="button" onClick={capturePayPalOrder} disabled={actionLoading === "capture"} title="Capture only the PayPal order approved by the buyer">
+            {actionLoading === "capture" ? "Capturing..." : "Capture approved payment"}
           </button>
           {captureStatus && <p role="status">{captureStatus}</p>}
         </section>
@@ -400,8 +481,8 @@ export default function DashboardPage() {
                 )}
                 {result.decision !== "BLOCK" && (
                   <>
-                    <button type="button" onClick={createPayPalOrder} style={{ padding: ".7rem 1rem" }}>
-                      Create PayPal Sandbox Order
+                    <button type="button" onClick={createPayPalOrder} disabled={actionLoading === "create-order"} title="Create an order only when the stored decision allows payment">
+                      {actionLoading === "create-order" ? "Creating order..." : "Create PayPal Sandbox Order"}
                     </button>
                     {approvalUrl && (
                       <a
@@ -417,9 +498,15 @@ export default function DashboardPage() {
                 )}
                 {result.tracking && <p>Shipment: {result.tracking.status} — {result.tracking.carrier} / {result.tracking.trackingNumber} (simulated carrier)</p>}
                 <div style={{ display: "flex", gap: ".5rem", flexWrap: "wrap", marginTop: ".75rem" }}>
-                  <button type="button" onClick={refundPayment}>Refund captured payment</button>
-                  <button type="button" onClick={draftDispute}>Draft dispute evidence</button>
-                  <button type="button" onClick={replayDispute}>Simulate dispute (development only)</button>
+                  <button type="button" onClick={refundPayment} disabled={actionLoading === "refund"} title="Issue a Sandbox refund for the captured order">
+                    {actionLoading === "refund" ? "Refunding..." : "Refund captured payment"}
+                  </button>
+                  <button type="button" onClick={draftDispute} disabled={actionLoading === "dispute"} title="Draft evidence using ledger facts; unknown facts stay unavailable">
+                    {actionLoading === "dispute" ? "Drafting..." : "Draft dispute evidence"}
+                  </button>
+                  <button type="button" onClick={replayDispute} disabled={actionLoading === "dispute-simulation"} title="Development-only local replay; not a live PayPal dispute">
+                    {actionLoading === "dispute-simulation" ? "Simulating..." : "Simulate dispute (development only)"}
+                  </button>
                 </div>
                 {refundStatus && <p role="status">{refundStatus}</p>}
                 {simulationStatus && <p role="status">{simulationStatus}</p>}
@@ -446,8 +533,8 @@ export default function DashboardPage() {
                       )}
                       {approval.status === "PENDING" && (
                         <span style={{ display: "flex", gap: ".5rem" }}>
-                          <button type="button" onClick={() => resolveApproval(approval.id, "APPROVED")}>Approve</button>
-                          <button type="button" onClick={() => resolveApproval(approval.id, "REJECTED")}>Reject</button>
+                          <button type="button" disabled={actionLoading === `approval-${approval.id}`} onClick={() => resolveApproval(approval.id, "APPROVED")}>Approve</button>
+                          <button type="button" disabled={actionLoading === `approval-${approval.id}`} onClick={() => resolveApproval(approval.id, "REJECTED")}>Reject</button>
                         </span>
                       )}
                     </div>
