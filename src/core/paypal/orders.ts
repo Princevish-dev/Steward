@@ -1,6 +1,5 @@
 import { idempotencyKey } from "@/core/ledger/append";
 import { paypalRequest } from "@/core/paypal/client";
-import { getPublicBaseUrl } from "@/core/http/public-url";
 
 export type OrderRequest = {
   runId: string;
