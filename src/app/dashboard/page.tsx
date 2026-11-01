@@ -67,8 +67,8 @@ const decisionColor = {
 };
 
 export default function DashboardPage() {
-  const [owner, setOwner] = useState("judge@example.com");
-  const [task, setTask] = useState("A4 printer paper and coffee");
+  const [owner, setOwner] = useState("");
+  const [task, setTask] = useState("");
   const [result, setResult] = useState<RunResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [paypalStatus, setPaypalStatus] = useState<string | null>(null);
@@ -118,6 +118,19 @@ export default function DashboardPage() {
     }
     void refreshControlRoom();
   }, [refreshControlRoom]);
+
+  useEffect(() => {
+    if (!mandateId) return;
+    void (async () => {
+      const response = await fetch(`/api/mandates/${encodeURIComponent(mandateId)}`);
+      if (!response.ok) return;
+      const body = await response.json() as { mandate?: { owner: string; purpose: string; status: string } };
+      if (!body.mandate) return;
+      setOwner(body.mandate.owner);
+      setTask(body.mandate.purpose);
+      setMandateStatus(`Mandate ${body.mandate.status} — ready for governed runs.`);
+    })();
+  }, [mandateId]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
