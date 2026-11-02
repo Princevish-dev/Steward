@@ -202,6 +202,7 @@ npm run e2e          # Playwright desktop + 390px mobile suites
 3. **Simulated Fulfilment:** Physical shipment tracking entries use simulated carrier identifiers (`SIMULATED_CARRIER`), while shipment tracking API requests hit the authentic PayPal Orders v2 Tracking API.
 4. **Channel3 Fallback:** When `CHANNEL3_API_KEY` is not provided or rate-limited, high-fidelity sanitized fixtures provide realistic product catalog discovery.
 5. **Reconciliation witness:** F4 uses the PayPal REST GET fallback because no Agent Toolkit dependency is installed in this repository. With `FEATURE_RECONCILE=true` (default), after capture and refund the server compares the PayPal object to its stored amount, currency, and status. `RECONCILED` shows a green `PayPal confirmed` badge with the PayPal ID suffix and ledger sequence; `MISMATCH` is recorded and blocks further order actions.
+   Existing ACTIVE mandates created before fingerprinting are enrolled once on first read and audited as `MANDATE_FINGERPRINT_BACKFILLED`; subsequent reads verify the stored fingerprint normally.
 6. **Typed confirmation:** Approval and full-capture refund actions require the exact server-computed `CONFIRM $amount` phrase when `FEATURE_TYPED_CONFIRM=true` (the default). Partial refunds and authorize-then-capture holds are not implemented.
 
 ### Render migrations

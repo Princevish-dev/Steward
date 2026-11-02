@@ -254,13 +254,15 @@ export default function DashboardPage() {
         total?: number;
         cart?: { items: Array<{ productId?: string; title?: string; unitPrice: number; quantity: number }> };
         error?: string;
+        reason?: string;
         ruleResults?: Array<{ id: string; passed: boolean; reason: string }>;
         reviewer?: { rationale?: string };
         ai?: { reviewerRationale?: string };
       }>(runRes);
 
       if (!runRes.ok || !runData.runId) {
-        throw new Error(runData.error ?? "Failed to execute purchase run.");
+        const failure = runData.error ?? runData.reason;
+        throw new Error(failure ?? `Purchase run failed (HTTP ${runRes.status}).`);
       }
 
       const runId = runData.runId;

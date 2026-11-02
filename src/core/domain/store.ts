@@ -44,11 +44,34 @@ export async function createMandate(mandate: Mandate, userId?: string): Promise<
 }
 
 export async function getMandate(id: string): Promise<Mandate | null> {
+  await ensureDatabaseMigrated();
   const result = await getDatabasePool().query(
     "SELECT definition FROM mandates WHERE id = $1",
     [id]
   );
-  return result.rows[0]?.definition as Mandate | null;
+  const mandate = result.rows[0]?.definition as FingerprintedMandate | undefined;
+  if (!mandate || mandate.status !== "ACTIVE" || !mandateFingerprintEnabled() || mandate.fingerprint) return mandate ?? null;
+
+  const legacy = { ...mandate, version: mandate.version ?? 1, fingerprint: mandateFingerprint({ ...mandate, version: mandate.version ?? 1 }) };
+  const upgraded = await getDatabasePool().query(
+    `UPDATE mandates
+     SET definition = $2::jsonb, updated_at = now()
+     WHERE id = $1 AND status = 'ACTIVE'
+       AND (definition->>'fingerprint' IS NULL OR definition->>'fingerprint' = '')
+     RETURNING definition`,
+    [id, JSON.stringify(legacy)]
+  );
+  const persisted = (upgraded.rows[0]?.definition as FingerprintedMandate | undefined) ?? legacy;
+  if (upgraded.rows[0]) {
+    await recordLedgerEvent({
+      type: "MANDATE_FINGERPRINT_BACKFILLED",
+      runId: "system",
+      mandateId: id,
+      payload: { reason: "LEGACY_MANDATE_MIGRATION", version: persisted.version ?? 1, fingerprint: persisted.fingerprint },
+      userId: persisted.owner
+    });
+  }
+  return persisted;
 }
 
 export async function updateMandateDraft(mandate: Mandate, owner: string): Promise<Mandate | null> {
