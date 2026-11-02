@@ -42,6 +42,9 @@ export async function POST(request: Request) {
     const context = await getRunContext(value.runId);
     if (!context) return NextResponse.json({ error: "Run not found." }, { status: 404 });
     if ((context.mandate as { owner?: string }).owner !== owner) return NextResponse.json({ error: "Run access denied." }, { status: 403 });
+    if (context.reconciliation_status === "MISMATCH") {
+      return NextResponse.json({ decision: "BLOCK", reason: "PAYPAL_RECONCILIATION_MISMATCH", paymentAttempted: false }, { status: 409 });
+    }
     const decision = context.mandate_status === "REVOKED" ? "REVOKED" : context.decision;
     assertPaymentAllowed({
       decision,

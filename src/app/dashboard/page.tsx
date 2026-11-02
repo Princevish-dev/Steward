@@ -91,6 +91,8 @@ type RunnerResult = {
   paypalApprovalUrl?: string | null;
   paypalCaptureId?: string | null;
   paypalStatus?: string | null;
+  paypalConfirmed?: boolean;
+  reconciliationSequence?: number | null;
   ledgerSequence?: number | null;
   reviewerRationale?: string | null;
   ruleResults?: Array<{ id: string; passed: boolean; reason: string }>;
@@ -329,7 +331,7 @@ export default function DashboardPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ runId })
       });
-      const captureData = await readJson<{ captureId?: string; status?: string; ledgerSequence?: number; error?: string }>(captureRes);
+      const captureData = await readJson<{ captureId?: string; status?: string; ledgerSequence?: number; reconciliationSequence?: number; paypalConfirmed?: boolean; error?: string }>(captureRes);
       if (!captureRes.ok) {
         throw new Error(captureData.error ?? "Capture failed. Has the buyer approved the order on PayPal?");
       }
@@ -337,7 +339,9 @@ export default function DashboardPage() {
         ...current,
         paypalCaptureId: captureData.captureId ?? null,
         paypalStatus: "PAID",
-        ledgerSequence: captureData.ledgerSequence ?? null
+        ledgerSequence: captureData.ledgerSequence ?? null,
+        paypalConfirmed: captureData.paypalConfirmed ?? false,
+        reconciliationSequence: captureData.reconciliationSequence ?? null
       } : null);
       await refreshDashboard();
     } catch (err) {
@@ -1088,6 +1092,11 @@ export default function DashboardPage() {
                   <p className="text-sm font-bold text-success">
                     PayPal Sandbox Payment Captured & Marked as PAID!
                   </p>
+                  {lastRunResult.paypalConfirmed && (
+                    <span className="ml-auto rounded-full border border-success/40 bg-success/10 px-2 py-1 text-[10px] font-semibold text-success">
+                      ✓ PayPal confirmed · ledger #{lastRunResult.reconciliationSequence ?? "?"}
+                    </span>
+                  )}
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
                   <div>

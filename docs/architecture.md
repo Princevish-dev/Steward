@@ -2,6 +2,11 @@
 
 Confirmed mandates carry a versioned SHA-256 fingerprint over canonical JSON. Runs verify the persisted definition before shopper or AI work; a mismatch is recorded as `MANDATE_TAMPERED` and blocks the run. Edits to confirmed mandates go through a new draft version. See [ADR 0005](adr/0005-frozen-mandate-fingerprint.md).
 
+After PayPal capture and refund, the server performs a read-only REST GET
+witness. It compares the provider object with the server record's amount,
+currency, and status, then records `RECONCILED` or `MISMATCH` in the ledger and
+on the payment order. A mismatch is a server-side block for later order actions.
+
 Steward is an autonomous procurement platform governed by explicit human mandates, a 13-rule deterministic policy engine, and a tamper-evident cryptographic audit ledger.
 
 ---

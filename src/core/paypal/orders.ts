@@ -22,7 +22,10 @@ export type PayPalCreatedOrder = {
   id: string;
   status: string;
   links?: Array<{ href: string; rel: string; method: string }>;
-  purchase_units?: Array<{ payments?: { captures?: Array<{ id: string }> } }>;
+  purchase_units?: Array<{
+    amount?: { value: string; currency_code: string };
+    payments?: { captures?: Array<{ id: string; status?: string; amount?: { value: string; currency_code: string } }> };
+  }>;
 };
 
 export function toPayPalOrderRequest(request: OrderRequest): PayPalOrderRequest {
@@ -76,6 +79,12 @@ export async function captureSandboxOrder(orderId: string): Promise<PayPalCreate
   });
 }
 
+/** REST fallback witness. No Agent Toolkit adapter is installed in this repo. */
+export async function getSandboxOrder(orderId: string): Promise<PayPalCreatedOrder> {
+  if (!/^[A-Z0-9-]+$/i.test(orderId)) throw new Error("Invalid PayPal order id.");
+  return paypalRequest<PayPalCreatedOrder>(`/v2/checkout/orders/${encodeURIComponent(orderId)}`, { method: "GET" });
+}
+
 export async function refundSandboxCapture(
   captureId: string,
   amount?: number
@@ -90,6 +99,11 @@ export async function refundSandboxCapture(
       amount: { value: amount.toFixed(2), currency_code: "USD" }
     })
   });
+}
+
+export async function getSandboxRefund(refundId: string): Promise<{ id: string; status: string; amount?: { value: string; currency_code: string } }> {
+  if (!/^[A-Z0-9-]+$/i.test(refundId)) throw new Error("Invalid PayPal refund id.");
+  return paypalRequest(`/v2/payments/refunds/${encodeURIComponent(refundId)}`, { method: "GET" });
 }
 
 export async function createVaultOrder(input: {

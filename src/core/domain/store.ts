@@ -184,6 +184,7 @@ export async function listPaymentOrdersForOwner(owner: string) {
   await ensureDatabaseMigrated();
   const result = await queryWithFallback(
     `SELECT po.id, po.run_id, po.amount, po.currency, po.status, po.approval_url, po.capture_id,
+            po.reconciliation_status, po.reconciliation_sequence, po.reconciled_at, po.reconciliation_details,
             po.tracking_carrier, po.tracking_number, po.tracking_status, po.created_at, po.updated_at,
             r.mandate_id, r.task AS run_task, r.decision AS run_decision
      FROM payment_orders po
@@ -192,6 +193,7 @@ export async function listPaymentOrdersForOwner(owner: string) {
      WHERE m.owner = $1 OR m.user_id = $1 OR r.owner = $1 OR r.user_id = $1
      ORDER BY po.created_at DESC LIMIT 200`,
     `SELECT po.id, po.run_id, po.amount, po.currency, po.status, po.approval_url, po.capture_id,
+            po.reconciliation_status, po.reconciliation_sequence, po.reconciled_at, po.reconciliation_details,
             po.tracking_carrier, po.tracking_number, po.tracking_status, po.created_at, po.updated_at,
             r.mandate_id, r.task AS run_task, r.decision AS run_decision
      FROM payment_orders po
@@ -208,6 +210,7 @@ export async function listRefundsForOwner(owner: string) {
   await ensureDatabaseMigrated();
   const result = await queryWithFallback(
     `SELECT r.id AS refund_id, r.order_id, r.amount, r.status, r.created_at, r.response,
+            po.reconciliation_status, po.reconciliation_sequence, po.reconciled_at, po.reconciliation_details,
             po.run_id, po.amount AS order_amount
      FROM refunds r
      JOIN payment_orders po ON po.id = r.order_id
@@ -216,6 +219,7 @@ export async function listRefundsForOwner(owner: string) {
      WHERE m.owner = $1 OR m.user_id = $1 OR runs.owner = $1 OR runs.user_id = $1
      ORDER BY r.created_at DESC LIMIT 200`,
     `SELECT r.id AS refund_id, r.order_id, r.amount, r.status, r.created_at, r.response,
+            po.reconciliation_status, po.reconciliation_sequence, po.reconciled_at, po.reconciliation_details,
             po.run_id, po.amount AS order_amount
      FROM refunds r
      JOIN payment_orders po ON po.id = r.order_id
@@ -370,7 +374,8 @@ export async function getRunContext(runId: string) {
     `SELECT r.id, r.mandate_id, r.decision, r.cart, m.status AS mandate_status, m.definition AS mandate,
             a.id AS approval_id, a.status AS approval_status, a.expires_at AS approval_expires_at,
             o.id AS order_id, o.status AS order_status, o.capture_id, o.cart_hash,
-            o.approval_url, o.tracking_carrier, o.tracking_number, o.tracking_status
+            o.approval_url, o.amount, o.currency, o.reconciliation_status, o.reconciliation_sequence,
+            o.reconciled_at, o.reconciliation_details, o.tracking_carrier, o.tracking_number, o.tracking_status
      FROM runs r
      JOIN mandates m ON m.id = r.mandate_id
      LEFT JOIN LATERAL (
@@ -388,7 +393,8 @@ export async function getRunContextByOrderId(orderId: string) {
     `SELECT r.id, r.mandate_id, r.decision, r.cart, m.status AS mandate_status, m.definition AS mandate,
             a.id AS approval_id, a.status AS approval_status, a.expires_at AS approval_expires_at,
             o.id AS order_id, o.status AS order_status, o.capture_id, o.cart_hash,
-            o.approval_url, o.tracking_carrier, o.tracking_number, o.tracking_status
+            o.approval_url, o.amount, o.currency, o.reconciliation_status, o.reconciliation_sequence,
+            o.reconciled_at, o.reconciliation_details, o.tracking_carrier, o.tracking_number, o.tracking_status
      FROM payment_orders o
      JOIN runs r ON r.id = o.run_id
      JOIN mandates m ON m.id = r.mandate_id
@@ -453,6 +459,35 @@ export async function persistPaymentOrder(input: {
     mandateId: context?.mandate_id ?? "unknown",
     payload: { orderId: input.id, amount: input.amount }
   });
+}
+
+export async function persistPayPalReconciliation(input: {
+  kind: "ORDER" | "REFUND";
+  orderId: string;
+  runId: string;
+  mandateId: string;
+  status: "RECONCILED" | "MISMATCH";
+  observed: { id: string | null; amount: number | null; currency: string | null; status: string | null };
+  mismatches: string[];
+}) {
+  const details = { kind: input.kind, observed: input.observed, mismatches: input.mismatches };
+  await getDatabasePool().query(
+    `UPDATE payment_orders
+     SET reconciliation_status = $2, reconciliation_details = $3::jsonb, reconciled_at = now(), updated_at = now()
+     WHERE id = $1`,
+    [input.orderId, input.status, JSON.stringify(details)]
+  );
+  const ledger = await recordLedgerEvent({
+    type: input.status,
+    runId: input.runId,
+    mandateId: input.mandateId,
+    payload: { orderId: input.orderId, ...details }
+  });
+  await getDatabasePool().query(
+    "UPDATE payment_orders SET reconciliation_sequence = $2 WHERE id = $1",
+    [input.orderId, ledger.sequence]
+  );
+  return { status: input.status, sequence: ledger.sequence, mismatches: input.mismatches };
 }
 
 export async function markOrderCaptured(runId: string, captureId: string | null, amount: number) {

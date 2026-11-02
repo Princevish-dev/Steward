@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getPublicBaseUrl } from "@/core/http/public-url";
-import { captureSandboxOrder } from "@/core/paypal/orders";
-import { getRunContext, getRunContextByOrderId, markOrderCaptured, persistTracking } from "@/core/domain/store";
+import { captureSandboxOrder, getSandboxOrder } from "@/core/paypal/orders";
+import { comparePayPalOrder, paypalReconciliationEnabled } from "@/core/paypal/reconcile";
+import { getRunContext, getRunContextByOrderId, markOrderCaptured, persistPayPalReconciliation, persistTracking } from "@/core/domain/store";
 import { addShipmentTracking } from "@/core/paypal/tracking";
 
 export async function GET(request: Request) {
@@ -28,6 +29,21 @@ export async function GET(request: Request) {
 
     // 2. If already captured/paid, redirect with success (idempotent)
     if (context && (context.order_status === "PAID" || context.order_status === "COMPLETED")) {
+      if (context.reconciliation_status === "MISMATCH") {
+        throw new Error("PAYPAL_RECONCILIATION_MISMATCH");
+      }
+      if (paypalReconciliationEnabled() && context.reconciliation_status !== "RECONCILED") {
+        const witness = await getSandboxOrder(token);
+        const reconciliation = comparePayPalOrder(witness, {
+          id: token,
+          amount: Number(context.amount ?? 0),
+          currency: String(context.currency ?? "USD"),
+          status: "PAID",
+          captureId: context.capture_id
+        });
+        const persisted = await persistPayPalReconciliation({ kind: "ORDER", orderId: token, runId: context.id, mandateId: context.mandate_id, ...reconciliation });
+        if (persisted.status === "MISMATCH") throw new Error("PAYPAL_RECONCILIATION_MISMATCH");
+      }
       return NextResponse.redirect(
         `${baseUrl}/dashboard?paypal=captured&orderId=${encodeURIComponent(token)}&captureId=${encodeURIComponent(context.capture_id ?? "")}${mandateId ? `&mandateId=${encodeURIComponent(mandateId)}` : ""}`
       );
@@ -44,6 +60,17 @@ export async function GET(request: Request) {
     // 4. Update order status to PAID and append ORDER_CAPTURED event to SHA-256 ledger
     if (runId) {
       await markOrderCaptured(runId, captureId, amount);
+      if (paypalReconciliationEnabled()) {
+        const reconciliation = comparePayPalOrder(order, {
+          id: token,
+          amount,
+          currency: String(context?.currency ?? "USD"),
+          status: "PAID",
+          captureId
+        });
+        const persisted = await persistPayPalReconciliation({ kind: "ORDER", orderId: token, runId, mandateId: context?.mandate_id ?? mandateId ?? "unknown", ...reconciliation });
+        if (persisted.status === "MISMATCH") throw new Error("PAYPAL_RECONCILIATION_MISMATCH");
+      }
       const tracking = await addShipmentTracking(token, runId);
       await persistTracking(runId, tracking);
     }

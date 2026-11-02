@@ -38,3 +38,17 @@ fixture or live catalog, simulated fulfilment, and proof for every state.
 Delegation with proof.”
 
 No music. Use only the product interface and permitted PayPal Sandbox screens.
+
+## F4 and honest labels for the final cut
+
+After the existing `Capture After Approval` action completes, show the green
+`PayPal confirmed` badge in Orders. Point out the PayPal order ID suffix and the
+reconciliation ledger sequence. Explain that Steward performed a read-only REST
+GET witness check for amount, currency, and status after capture. Open Refunds,
+use the typed `CONFIRM $<server amount>` step-up, then show the same `PayPal
+confirmed` badge after the refund witness. A red `PayPal mismatch - blocked`
+state is a failure demonstration: the server records `MISMATCH` and refuses
+further order actions. Keep the source labels visible: Channel3 is `REAL` only
+when configured, otherwise `FIXTURE`; shipment tracking is `SIMULATED`; PayPal
+Sandbox and reconciliation are `REAL` only when the configured sandbox call
+completes successfully. Cron is `stale approvals only; holds not built`.

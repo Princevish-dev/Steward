@@ -108,6 +108,10 @@ ALTER TABLE payment_orders ADD COLUMN IF NOT EXISTS capture_id TEXT;
 ALTER TABLE payment_orders ADD COLUMN IF NOT EXISTS tracking_carrier TEXT;
 ALTER TABLE payment_orders ADD COLUMN IF NOT EXISTS tracking_number TEXT;
 ALTER TABLE payment_orders ADD COLUMN IF NOT EXISTS tracking_status TEXT;
+ALTER TABLE payment_orders ADD COLUMN IF NOT EXISTS reconciliation_status TEXT NOT NULL DEFAULT 'PENDING';
+ALTER TABLE payment_orders ADD COLUMN IF NOT EXISTS reconciliation_sequence BIGINT;
+ALTER TABLE payment_orders ADD COLUMN IF NOT EXISTS reconciled_at TIMESTAMPTZ;
+ALTER TABLE payment_orders ADD COLUMN IF NOT EXISTS reconciliation_details JSONB;
 CREATE UNIQUE INDEX IF NOT EXISTS payment_orders_run_id_unique ON payment_orders (run_id);
 CREATE INDEX IF NOT EXISTS ledger_entries_run_id_idx ON ledger_entries (run_id);
 CREATE TABLE IF NOT EXISTS paypal_webhook_events (

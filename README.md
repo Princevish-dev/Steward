@@ -20,6 +20,7 @@ As autonomous AI agents evolve from chat assistants into commercial actors, givi
 2. **13-Rule Deterministic Policy Engine**: Every agent proposal is evaluated against 13 mathematical boundary checks before any payment API is called.
 3. **Escalate-Only Risk Reviewer**: An AI Risk Reviewer monitors subtle fraud patterns, mathematically constrained so it can only escalate risk (`AUTO` &rarr; `ASK` &rarr; `BLOCK`), but **never downgrade a block**.
 4. **Two-Step PayPal Orders v2 Execution**: Auto-approved runs create a PayPal Sandbox Order with an explicit approval link. Capture occurs only after verified buyer authorization upon return.
+5. **PayPal confirms every cent**: after capture and refund, Steward performs a read-only PayPal REST witness check for amount, currency, and status. It records `RECONCILED` or `MISMATCH`; a mismatch blocks further order actions and is visible as a red badge.
 5. **Cryptographic SHA-256 Ledger**: Every state transition—from mandate genesis to final capture—is hash-chained (`prev_hash` &rarr; `entry_hash`), verifiable at runtime via `/api/ledger/verify`.
 
 ---
@@ -31,13 +32,13 @@ Judges can test the production application immediately with zero configuration o
 - **Live Deployment URL:** [https://steward-w7pk.onrender.com](https://steward-w7pk.onrender.com)
 - **Direct Login Route:** [https://steward-w7pk.onrender.com/login](https://steward-w7pk.onrender.com/login)
 
-### Judge Test Credentials
-| Field | Value |
-|---|---|
-| **Email** | `judge@paypal.com` |
-| **Password** | `password123` *(or any test string)* |
+### Login
 
-> **Auto-Seeded Benchmark Mandate:** Upon login, the judge account is automatically provisioned with an active, ledger-anchored benchmark mandate:  
+Use any valid email address you control. The hackathon login accepts the email
+as the demo owner identity; no fixed judge account or password is required, and
+the optional password is not checked. For example, `you@example.com` works.
+
+> **Auto-Seeded Benchmark Mandate:** When the demo seed path is used, the signed-in owner is provisioned with an active, ledger-anchored benchmark mandate:  
 > **"Buy office stationery for my team"** *(Budget: $220/mo, Per-Item Cap: $60, Approval Ask Threshold: $80, Category: `office_supplies`)*.
 
 ---
@@ -181,14 +182,15 @@ npm run db:migrate
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and log in with `judge@paypal.com`.
+Open [http://localhost:3000](http://localhost:3000) and sign in with any valid email address, such as `you@example.com`.
 
 ### Test Commands
 ```bash
 npm run typecheck    # TypeScript compiler check (0 errors)
 npm run lint         # ESLint validation (0 warnings or errors)
-npm run test         # Vitest unit & integration test suite (120 tests pass)
-npm run build        # Production Next.js build compilation (48/48 routes)
+npm run test         # Vitest unit & integration test suite
+npm run build        # Production Next.js build compilation
+npm run e2e          # Playwright desktop + 390px mobile suites
 ```
 
 ---
@@ -199,6 +201,12 @@ npm run build        # Production Next.js build compilation (48/48 routes)
 2. **Per-Order Approval Flow:** Due to developer sandbox constraints on PayPal Vault token setup (`403 NOT_AUTHORIZED` on `/v3/vault/setup-tokens`), Steward AI uses the standard, fully supported **PayPal Orders v2 two-step capture** flow where the buyer explicitly authorizes orders via PayPal's sandbox approval page.
 3. **Simulated Fulfilment:** Physical shipment tracking entries use simulated carrier identifiers (`SIMULATED_CARRIER`), while shipment tracking API requests hit the authentic PayPal Orders v2 Tracking API.
 4. **Channel3 Fallback:** When `CHANNEL3_API_KEY` is not provided or rate-limited, high-fidelity sanitized fixtures provide realistic product catalog discovery.
+5. **Reconciliation witness:** F4 uses the PayPal REST GET fallback because no Agent Toolkit dependency is installed in this repository. With `FEATURE_RECONCILE=true` (default), after capture and refund the server compares the PayPal object to its stored amount, currency, and status. `RECONCILED` shows a green `PayPal confirmed` badge with the PayPal ID suffix and ledger sequence; `MISMATCH` is recorded and blocks further order actions.
+6. **Typed confirmation:** Approval and full-capture refund actions require the exact server-computed `CONFIRM $amount` phrase when `FEATURE_TYPED_CONFIRM=true` (the default). Partial refunds and authorize-then-capture holds are not implemented.
+
+### Render migrations
+
+Render runs `npm ci && npm run db:migrate && npm run build`. When `DATABASE_URL_UNPOOLED` or `DATABASE_URL` is present, the migration runner logs `Database schema is ready.` after a transactional schema pass. The schema uses `IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` guards and is safe to rerun. To verify a deployment, open the Render service deploy log and confirm `> steward@... db:migrate`, `Database schema is ready.`, then `> steward@... build`; a migration error must stop the build with `Migration failed:`. Do not run the command against production manually without an approved backup and rollback window. Rollback is application-level: deploy the prior commit and restore the database from the Neon point-in-time branch/backup; this schema has no destructive down migration.
 
 ---
 

@@ -26,6 +26,8 @@ type RefundRow = {
   amount: number | null;
   status: string;
   createdAt: string;
+  reconciliation_status?: "PENDING" | "RECONCILED" | "MISMATCH";
+  reconciliation_sequence?: number | null;
 };
 
 export default function RefundsPage() {
@@ -105,7 +107,17 @@ export default function RefundsPage() {
           ]}
           data={refunds}
           renderCell={(item, key) => {
-            if (key === "status") return <StatusBadge status={item.status as any} />;
+            if (key === "status") return (
+              <div className="space-y-1">
+                <StatusBadge status={item.status as any} />
+                {item.reconciliation_status === "RECONCILED" && (
+                  <span className="block text-[10px] font-semibold text-success">✓ PayPal confirmed · ledger #{item.reconciliation_sequence ?? "?"}</span>
+                )}
+                {item.reconciliation_status === "MISMATCH" && (
+                  <span className="block text-[10px] font-semibold text-error">PayPal mismatch · blocked</span>
+                )}
+              </div>
+            );
             if (key === "amount") return item.amount !== null && item.amount !== undefined ? `$${Number(item.amount).toFixed(2)}` : "—";
             return item[key as keyof RefundRow];
           }}

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { refundSandboxCapture } from "@/core/paypal/orders";
-import { findRefundForOrder, getRunContext, persistRefund } from "@/core/domain/store";
+import { getSandboxRefund, refundSandboxCapture } from "@/core/paypal/orders";
+import { comparePayPalRefund, paypalReconciliationEnabled } from "@/core/paypal/reconcile";
+import { findRefundForOrder, getRunContext, persistPayPalReconciliation, persistRefund } from "@/core/domain/store";
 import { recordLedgerEvent } from "@/core/ledger/store";
 import { assertPaymentAllowed } from "@/core/payment/guard";
 import { requireSessionOwner } from "@/core/auth/session";
@@ -25,6 +26,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "A completed captured order is required." }, { status: 409 });
     }
     if ((context.mandate as { owner?: string }).owner !== owner) return NextResponse.json({ error: "Run access denied." }, { status: 403 });
+    if (context.reconciliation_status === "MISMATCH") {
+      return NextResponse.json({ decision: "BLOCK", reason: "PAYPAL_RECONCILIATION_MISMATCH", paymentAttempted: false }, { status: 409 });
+    }
     const decision = context.mandate_status === "REVOKED" ? "REVOKED" : context.decision;
     assertPaymentAllowed({
       decision,
@@ -33,10 +37,26 @@ export async function POST(request: Request) {
     });
     const existingRefund = await findRefundForOrder(context.order_id);
     if (existingRefund) {
+      if (!paypalReconciliationEnabled()) {
+        return NextResponse.json({ refundId: existingRefund.id, status: existingRefund.status, idempotent: true, paypalConfirmed: false });
+      }
+      const witness = await getSandboxRefund(existingRefund.id);
+      const reconciliation = comparePayPalRefund(witness, {
+        id: existingRefund.id,
+        amount: Number(existingRefund.amount ?? context.amount ?? 0),
+        currency: String(context.currency ?? "USD"),
+        status: String(existingRefund.status)
+      });
+      const persisted = await persistPayPalReconciliation({ kind: "REFUND", orderId: context.order_id, runId: body.runId, mandateId: context.mandate_id, ...reconciliation });
+      if (persisted.status === "MISMATCH") {
+        return NextResponse.json({ decision: "BLOCK", reason: "PAYPAL_RECONCILIATION_MISMATCH", mismatches: persisted.mismatches, paymentAttempted: false }, { status: 409 });
+      }
       return NextResponse.json({
         refundId: existingRefund.id,
         status: existingRefund.status,
-        idempotent: true
+        idempotent: true,
+        paypalConfirmed: true,
+        reconciliationSequence: persisted.sequence
       });
     }
     if (process.env.FEATURE_TYPED_CONFIRM?.trim().toLowerCase() !== "false") {
@@ -52,14 +72,34 @@ export async function POST(request: Request) {
       if (!confirmation.ok) return NextResponse.json({ error: "Typed confirmation did not match or has expired." }, { status: 409 });
     }
     const refund = await refundSandboxCapture(context.capture_id);
-    await persistRefund({ id: refund.id, orderId: context.order_id, status: refund.status, response: refund });
+    await persistRefund({ id: refund.id, orderId: context.order_id, amount: Number(context.amount ?? 0), status: refund.status, response: refund });
+    if (!paypalReconciliationEnabled()) {
+      const ledger = await recordLedgerEvent({
+        type: "REFUND_ISSUED",
+        runId: body.runId,
+        mandateId: context.mandate_id,
+        payload: { orderId: context.order_id, refundId: refund.id, status: refund.status }
+      });
+      return NextResponse.json({ refundId: refund.id, status: refund.status, paypalConfirmed: false, ledgerSequence: ledger.sequence });
+    }
+    const witness = await getSandboxRefund(refund.id);
+    const reconciliation = comparePayPalRefund(witness, {
+      id: refund.id,
+      amount: Number(context.amount ?? 0),
+      currency: String(context.currency ?? "USD"),
+      status: refund.status
+    });
+    const persisted = await persistPayPalReconciliation({ kind: "REFUND", orderId: context.order_id, runId: body.runId, mandateId: context.mandate_id, ...reconciliation });
+    if (persisted.status === "MISMATCH") {
+      return NextResponse.json({ decision: "BLOCK", reason: "PAYPAL_RECONCILIATION_MISMATCH", mismatches: persisted.mismatches, paymentAttempted: true, refundId: refund.id, reconciliationSequence: persisted.sequence }, { status: 409 });
+    }
     const ledger = await recordLedgerEvent({
       type: "REFUND_ISSUED",
       runId: body.runId,
       mandateId: context.mandate_id,
       payload: { orderId: context.order_id, refundId: refund.id, status: refund.status }
     });
-    return NextResponse.json({ refundId: refund.id, status: refund.status, ledgerSequence: ledger.sequence });
+    return NextResponse.json({ refundId: refund.id, status: refund.status, paypalConfirmed: true, reconciliationSequence: persisted.sequence, ledgerSequence: ledger.sequence });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Refund failed.";
     const status = message === "MANDATE_REVOKED" || message === "PAYMENT_BLOCKED"

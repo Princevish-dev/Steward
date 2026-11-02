@@ -19,3 +19,13 @@ Playwright expects the demo application and its configured database. The browser
 - Playwright login is rate limited; E2E helpers establish the browser session through the UI and reuse it per worker.
 - Keep service credentials out of command output and test reports.
 - A passing unit or browser suite does not verify PayPal sandbox settlement, production deployment, or live database state. Record those checks separately in the release report.
+
+## Migration verification
+
+Render runs `npm ci && npm run db:migrate && npm run build`. In the deploy log,
+confirm `Database schema is ready.` appears after `db:migrate` and before the
+Next.js build output. If the schema fails, the log contains `Migration failed:`
+and the build exits nonzero. The schema is rerunnable because table, index, and
+column changes use idempotent guards. Do not run this against production from a
+local shell without an explicit backup/rollback window; rollback means deploying
+the prior commit and restoring a Neon point-in-time branch or backup.
