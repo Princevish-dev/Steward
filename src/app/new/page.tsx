@@ -458,11 +458,14 @@ export default function NewMandatePage() {
               <p className="text-xs font-semibold text-text-secondary mt-4 mb-2">Monthly Budget</p>
               <p className="text-sm text-text-primary">${draft.period.budget}</p>
             </div>
-            <div className="mt-8">
+            <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
               <Button variant="primary" asChild>
-                <Link href={`/dashboard?mandateId=${draft.id}`}>Open Control Room</Link>
+                <Link href={`/dashboard?mandateId=${draft.id}`}>🚀 Open Control Room & Run Purchase</Link>
               </Button>
-              <Button variant="secondary" size="sm" onClick={revokeMandate} className="mt-3">
+              <Button variant="secondary" asChild>
+                <Link href="/redteam">🛡️ Open Red-Team Lab</Link>
+              </Button>
+              <Button variant="secondary" size="sm" onClick={revokeMandate}>
                 Revoke Mandate
               </Button>
             </div>

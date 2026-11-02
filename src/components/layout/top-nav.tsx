@@ -10,21 +10,21 @@ export function TopNav({ onMenuToggle }: { onMenuToggle: () => void }) {
 
   const mainNav = [
     { label: "Dashboard", href: "/dashboard" },
-    { label: "Mandates", href: "/mandates" },
-    { label: "Purchase Requests", href: "/purchase-requests" },
-    { label: "Approvals", href: "/approvals" }
+    { label: "New Mandate", href: "/new" },
+    { label: "Approvals", href: "/approvals" },
+    { label: "Orders", href: "/orders" },
+    { label: "Ledger", href: "/ledger" }
   ];
 
   const secondaryNav = [
-    { label: "Orders", href: "/orders" },
-    { label: "Payments", href: "/payments" },
-    { label: "Ledger", href: "/ledger" },
-    { label: "Red-Team", href: "/redteam" }
+    { label: "Mandates", href: "/mandates" },
+    { label: "Purchase Requests", href: "/purchase-requests" },
+    { label: "Payments", href: "/payments" }
   ];
 
   return (
     <header className="h-16 border-b border-border bg-surface/90 backdrop-blur flex items-center justify-between px-4 sticky top-0 z-40">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         <button
           onClick={onMenuToggle}
           className="rounded-md p-2 text-text-secondary hover:text-text-primary hover:bg-surface-elevated focus-visible-outline cursor-pointer"
@@ -39,26 +39,45 @@ export function TopNav({ onMenuToggle }: { onMenuToggle: () => void }) {
       </div>
 
       {isAuthenticated && (
-        <nav className="hidden lg:flex items-center gap-5 text-sm font-medium">
-          {mainNav.map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className={`transition-colors py-1 ${
-                pathname === item.href
-                  ? "text-primary border-b-2 border-primary font-semibold"
-                  : "text-text-secondary hover:text-text-primary"
-              }`}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+        <div className="flex items-center gap-3 lg:gap-5">
+          <nav className="hidden md:flex items-center gap-4 lg:gap-5 text-sm font-medium">
+            {mainNav.map((item) => (
+              <Link
+                key={item.label}
+                href={item.href}
+                className={`transition-colors py-1 ${
+                  pathname === item.href
+                    ? "text-primary border-b-2 border-primary font-semibold"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+
+          {/* Prominent Red-Team Adversarial Lab Button */}
+          <Link
+            href="/redteam"
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition shadow-sm ${
+              pathname === "/redteam"
+                ? "border-red-500 bg-red-500/25 text-red-200 ring-1 ring-red-500"
+                : "border-red-500/50 bg-red-950/40 text-red-300 hover:bg-red-900/50 hover:border-red-400"
+            }`}
+            title="Red-Team Adversarial Safety Lab (FR-24, FR-25)"
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+            </span>
+            <span>🛡️ Red-Team Lab</span>
+          </Link>
+        </div>
       )}
 
       <div className="flex items-center gap-3">
         {isAuthenticated && (
-          <nav className="hidden xl:flex items-center gap-4 text-xs font-medium">
+          <nav className="hidden xl:flex items-center gap-3 text-xs font-medium">
             {secondaryNav.map((item) => (
               <Link
                 key={item.label}

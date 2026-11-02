@@ -81,19 +81,29 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
         <nav className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
           {navigation.map((item) => {
             const isActive = pathname === item.href;
+            const isRedTeam = item.href === "/redteam";
             return (
               <Link
                 key={item.label}
                 href={item.href}
                 onClick={onClose}
-                className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                className={`flex items-center justify-between px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                   isActive
                     ? "bg-primary text-primary-text"
-                    : "text-text-secondary hover:text-text-primary hover:bg-surface"
+                    : isRedTeam
+                      ? "text-red-300 bg-red-950/20 hover:bg-red-900/30 border border-red-500/30"
+                      : "text-text-secondary hover:text-text-primary hover:bg-surface"
                 }`}
               >
-                <span className="w-5 text-center">{item.icon}</span>
-                {item.label}
+                <div className="flex items-center gap-3">
+                  <span className="w-5 text-center">{item.icon}</span>
+                  {item.label}
+                </div>
+                {isRedTeam && (
+                  <span className="px-1.5 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded bg-red-500 text-white shadow-sm">
+                    Active
+                  </span>
+                )}
               </Link>
             );
           })}
