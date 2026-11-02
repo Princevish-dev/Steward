@@ -30,7 +30,15 @@ type MandateRow = {
   askAbove: number | null;
   categories: string[];
   expiresAt: string;
+  totalSpent?: number;
+  runsCount?: number;
 };
+
+function cleanPurposeText(purpose: string): string {
+  if (!purpose) return "General Purchases";
+  const title = purpose.split(/[.,;]\s*(?:maximum|max)\s/i)[0].replace(/^["']|["']$/g, "").trim();
+  return title || purpose.replace(/^["']|["']$/g, "").trim();
+}
 
 export default function MandatesPage() {
   const [mandates, setMandates] = useState<MandateRow[]>([]);
@@ -55,6 +63,24 @@ export default function MandatesPage() {
       setLoading(false);
     }
   }, []);
+
+  const [revokingId, setRevokingId] = useState<string | null>(null);
+  const handleRevoke = async (id: string) => {
+    if (!window.confirm("Are you sure you want to archive/revoke this mandate?")) return;
+    setRevokingId(id);
+    try {
+      const res = await fetch(`/api/mandates/${id}/revoke`, { method: "POST" });
+      if (!res.ok) {
+        const err = await readJson<{ error?: string }>(res);
+        throw new Error(err.error ?? "Failed to revoke mandate.");
+      }
+      await fetchMandates();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to revoke mandate.");
+    } finally {
+      setRevokingId(null);
+    }
+  };
 
   useEffect(() => {
     void fetchMandates();
@@ -110,17 +136,58 @@ export default function MandatesPage() {
       ) : (
         <DataTable
           columns={[
-            { key: "id", header: "Mandate ID", width: "20%" },
-            { key: "purpose", header: "Purpose", width: "35%" },
+            { key: "purpose", header: "Mandate Purpose", width: "35%" },
             { key: "status", header: "Status", width: "15%" },
-            { key: "budget", header: "Monthly Budget", width: "15%" },
-            { key: "perItem", header: "Per-Item Cap", width: "15%" }
+            { key: "budget", header: "Monthly Budget", width: "20%" },
+            { key: "perItem", header: "Per-Item Cap", width: "12%" },
+            { key: "actions", header: "Actions", width: "18%" }
           ]}
           data={mandates}
           renderCell={(item, key) => {
+            if (key === "purpose") {
+              return (
+                <div>
+                  <p className="font-semibold text-text-primary text-xs">{cleanPurposeText(item.purpose)}</p>
+                  <p className="text-[10px] font-mono text-text-muted">{item.id}</p>
+                </div>
+              );
+            }
             if (key === "status") return <StatusBadge status={item.status as any} />;
-            if (key === "budget") return `$${item.period.budget.toFixed(2)}`;
+            if (key === "budget") {
+              return (
+                <div>
+                  <span className="text-xs font-semibold text-text-primary">${item.period.budget.toFixed(2)}</span>
+                  {(item.totalSpent || 0) > 0 && (
+                    <span className="block text-[10px] text-text-muted">
+                      ${item.totalSpent?.toFixed(2)} spent
+                    </span>
+                  )}
+                </div>
+              );
+            }
             if (key === "perItem") return item.caps.perItem !== null ? `$${item.caps.perItem}` : "—";
+            if (key === "actions") {
+              return (
+                <div className="flex items-center gap-2">
+                  <Link
+                    href={`/dashboard?mandateId=${item.id}`}
+                    className="px-2.5 py-1 rounded bg-primary hover:bg-primary-hover text-primary-text font-bold text-[11px] transition whitespace-nowrap shadow-sm"
+                  >
+                    Use in Runner →
+                  </Link>
+                  {item.status === "ACTIVE" && (
+                    <button
+                      type="button"
+                      disabled={revokingId === item.id}
+                      onClick={() => handleRevoke(item.id)}
+                      className="text-[11px] text-text-muted hover:text-error underline transition ml-1 cursor-pointer"
+                    >
+                      {revokingId === item.id ? "Archiving..." : "Archive"}
+                    </button>
+                  )}
+                </div>
+              );
+            }
             return item[key as keyof MandateRow] as React.ReactNode;
           }}
           rowKey={(item) => item.id}

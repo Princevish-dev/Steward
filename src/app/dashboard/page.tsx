@@ -580,23 +580,197 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Mandate Selection */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-          <div className="lg:col-span-2">
-            <label className="block text-xs font-semibold uppercase tracking-wider text-text-secondary mb-1.5">
-              Select Active Governing Mandate
-            </label>
-            {mandates.length === 0 ? (
-              <div className="p-3 rounded-lg border border-warning/40 bg-warning/10 text-xs text-warning flex items-center justify-between">
-                <span>No active mandates found. Create a mandate first to govern purchases.</span>
-                <Link href="/new" className="font-semibold underline ml-2">Create Mandate →</Link>
+        {/* Mandate Selection & Control Hub */}
+        <div className="mb-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-border/50">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-text-primary">
+                  🎯 Step 1: Select Active Governing Mandate
+                </span>
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary/20 text-primary font-semibold">
+                  {mandates.filter((m) => m.status === "ACTIVE").length} Active Available
+                </span>
               </div>
-            ) : (
+              <p className="text-xs text-text-secondary mt-0.5">
+                Click any mandate card below to set it as the active governing policy for your AI shopping runs.
+              </p>
+            </div>
+            <Link
+              href="/new"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-primary hover:bg-primary-hover text-primary-text transition shadow whitespace-nowrap self-start sm:self-auto"
+            >
+              <span>+ Create New Mandate</span>
+            </Link>
+          </div>
+
+          {/* Visual Mandate Cards Grid (Click to Select) */}
+          {mandates.length === 0 ? (
+            <div className="p-4 rounded-lg border border-warning/40 bg-warning/10 text-xs text-warning flex items-center justify-between">
+              <span>No mandates found. Create your first mandate to establish purchasing limits.</span>
+              <Link href="/new" className="font-semibold underline ml-2">Create Mandate →</Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {mandates.map((m) => {
+                const isSelected = m.id === mandateId;
+                const cleanTitle = cleanPurposeText(m.purpose);
+                const spent = m.totalSpent || 0;
+                const remaining = Math.max(0, m.period.budget - spent);
+                const isFullySpent = m.status === "ACTIVE" && spent >= m.period.budget;
+                const isRevoked = m.status === "REVOKED";
+                const pct = Math.min(100, Math.round((spent / m.period.budget) * 100));
+
+                return (
+                  <div
+                    key={m.id}
+                    onClick={() => {
+                      if (!isRevoked) setMandateId(m.id);
+                    }}
+                    className={`relative p-4 rounded-xl border text-left transition flex flex-col justify-between ${
+                      isSelected
+                        ? "border-primary bg-primary/10 shadow-lg ring-2 ring-primary/40 cursor-default"
+                        : isRevoked
+                        ? "border-border/40 bg-surface/40 opacity-60 cursor-not-allowed"
+                        : isFullySpent
+                        ? "border-warning/40 bg-warning/5 hover:border-warning/70 cursor-pointer"
+                        : "border-border bg-surface hover:border-primary/50 hover:bg-surface-elevated shadow-sm cursor-pointer"
+                    }`}
+                  >
+                    <div>
+                      {/* Top status & badge */}
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className="font-mono text-[10px] text-text-muted truncate max-w-[120px]">
+                          {m.id}
+                        </span>
+                        {isSelected ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary text-primary-text shadow-sm">
+                            <span>✓</span> ACTIVE IN SIMULATOR
+                          </span>
+                        ) : isRevoked ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-error/20 text-error">
+                            ARCHIVED
+                          </span>
+                        ) : isFullySpent ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-warning/20 text-warning">
+                            BUDGET FULFILLED
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-success/20 text-success">
+                            READY TO USE
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Mandate Purpose Title */}
+                      <h4 className="text-sm font-bold text-text-primary line-clamp-2 mb-2 leading-snug">
+                        {cleanTitle}
+                      </h4>
+
+                      {/* Policy Constraints Pills */}
+                      <div className="flex flex-wrap gap-1.5 mb-3 text-[11px]">
+                        <span className="px-2 py-0.5 rounded bg-surface-elevated border border-border text-text-secondary">
+                          Item Cap: <strong>${m.caps.perItem ?? "∞"}</strong>
+                        </span>
+                        <span className="px-2 py-0.5 rounded bg-surface-elevated border border-border text-text-secondary">
+                          Ask: <strong>{m.askAbove ? `>$${m.askAbove}` : "None"}</strong>
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      {/* Budget Spent Progress Bar */}
+                      <div className="space-y-1 pt-2 border-t border-border/50 text-[11px]">
+                        <div className="flex justify-between text-text-secondary">
+                          <span>Monthly Budget</span>
+                          <span className="font-bold text-text-primary">${m.period.budget}</span>
+                        </div>
+                        <div className="w-full bg-border rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className={`h-full transition-all ${
+                              isFullySpent ? "bg-warning" : "bg-primary"
+                            }`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-[10px] text-text-muted">
+                          <span>Spent: ${spent.toFixed(2)}</span>
+                          <span className={remaining > 0 ? "text-success font-semibold" : "text-text-muted"}>
+                            Rem: ${remaining.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Card Bottom Action */}
+                      <div className="mt-3 pt-2 flex items-center justify-between border-t border-border/40 text-xs">
+                        {isSelected ? (
+                          <span className="text-primary font-bold text-xs flex items-center gap-1">
+                            <span>●</span> Selected Mandate
+                          </span>
+                        ) : !isRevoked ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMandateId(m.id);
+                            }}
+                            className="text-primary hover:underline font-semibold text-xs cursor-pointer"
+                          >
+                            Set as Active →
+                          </button>
+                        ) : (
+                          <span className="text-text-muted text-[11px]">Revoked</span>
+                        )}
+
+                        {!isRevoked && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRevokeMandate(m.id);
+                            }}
+                            disabled={revokingMandateId === m.id}
+                            className="text-[11px] text-text-muted hover:text-error underline transition cursor-pointer"
+                          >
+                            {revokingMandateId === m.id ? "Archiving..." : "Archive"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Add New Mandate Card */}
+              <Link
+                href="/new"
+                className="p-5 rounded-xl border border-dashed border-border hover:border-primary/60 bg-surface/40 hover:bg-surface/80 transition flex flex-col items-center justify-center text-center gap-2 group min-h-[180px]"
+              >
+                <div className="w-10 h-10 rounded-full bg-primary/10 group-hover:bg-primary/20 flex items-center justify-center text-primary text-xl font-bold transition">
+                  +
+                </div>
+                <p className="text-sm font-bold text-text-primary group-hover:text-primary transition">
+                  Create New Mandate
+                </p>
+                <p className="text-xs text-text-secondary max-w-[200px]">
+                  Draft a new AI-governed spending policy using natural language.
+                </p>
+              </Link>
+            </div>
+          )}
+
+          {/* Quick Dropdown Fallback (for accessibility and fast select) */}
+          {mandates.length > 0 && (
+            <div className="pt-2 flex flex-col sm:flex-row sm:items-center gap-2 text-xs text-text-muted">
+              <label htmlFor="governing-mandate-dropdown" className="font-medium whitespace-nowrap">
+                Or select from dropdown list:
+              </label>
               <select
+                id="governing-mandate-dropdown"
                 aria-label="Select Governing Mandate"
                 value={mandateId ?? ""}
                 onChange={(e) => setMandateId(e.target.value)}
-                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-primary focus:outline-none"
+                className="flex-1 rounded-md border border-border bg-surface px-3 py-1.5 text-xs text-text-primary focus:border-primary focus:outline-none"
               >
                 {(() => {
                   const activeAvailable = mandates.filter((m) => m.status === "ACTIVE" && (m.totalSpent || 0) < m.period.budget);
@@ -646,25 +820,49 @@ export default function DashboardPage() {
                   );
                 })()}
               </select>
-            )}
-          </div>
+            </div>
+          )}
 
+          {/* Active Governing Mandate Highlight Strip */}
           {selectedMandate && (
-            <div className="p-3.5 rounded-lg border border-border bg-surface space-y-3">
+            <div className="p-4 rounded-xl border border-primary/40 bg-surface-elevated shadow-md space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-border/50">
+                <div className="flex items-center gap-2">
+                  <span className="text-base text-primary">🎯</span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-text-primary">
+                    Active Mandate Details
+                  </span>
+                  <StatusBadge status={selectedMandate.status as any} size="sm" />
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="font-mono text-[10px] text-text-muted">{selectedMandate.id}</span>
+                  {selectedMandate.status === "ACTIVE" && (
+                    <button
+                      type="button"
+                      onClick={() => handleRevokeMandate(selectedMandate.id)}
+                      disabled={revokingMandateId === selectedMandate.id}
+                      className="text-text-muted hover:text-error text-xs font-medium underline transition ml-2 cursor-pointer"
+                    >
+                      {revokingMandateId === selectedMandate.id ? "Archiving..." : "Archive Mandate"}
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-                <div className="p-2 rounded bg-surface-elevated border border-border/50">
+                <div className="p-2.5 rounded-lg bg-surface border border-border/50">
                   <p className="text-[10px] uppercase font-bold text-text-muted">Item Cap</p>
                   <p className="text-sm font-bold text-text-primary">${selectedMandate.caps.perItem ?? "∞"}</p>
                 </div>
-                <div className="p-2 rounded bg-surface-elevated border border-border/50">
+                <div className="p-2.5 rounded-lg bg-surface border border-border/50">
                   <p className="text-[10px] uppercase font-bold text-text-muted">Ask Threshold</p>
                   <p className="text-sm font-bold text-warning">{selectedMandate.askAbove ? `>$${selectedMandate.askAbove}` : "None"}</p>
                 </div>
-                <div className="p-2 rounded bg-surface-elevated border border-border/50">
+                <div className="p-2.5 rounded-lg bg-surface border border-border/50">
                   <p className="text-[10px] uppercase font-bold text-text-muted">Monthly Budget</p>
                   <p className="text-sm font-bold text-text-primary">${selectedMandate.period.budget}</p>
                 </div>
-                <div className="p-2 rounded bg-surface-elevated border border-border/50">
+                <div className="p-2.5 rounded-lg bg-surface border border-border/50">
                   <p className="text-[10px] uppercase font-bold text-text-muted">Spent / Remaining</p>
                   <p className="text-sm font-bold text-success">
                     ${(selectedMandate.totalSpent || 0).toFixed(2)} / ${Math.max(0, selectedMandate.period.budget - (selectedMandate.totalSpent || 0)).toFixed(2)}
@@ -674,12 +872,12 @@ export default function DashboardPage() {
 
               {/* Purchase History / Completed Notification */}
               {(selectedMandate.totalSpent || 0) > 0 && (
-                <div className="p-2 rounded-md border border-success/30 bg-success/10 text-xs text-success flex items-center justify-between">
+                <div className="p-2.5 rounded-md border border-success/30 bg-success/10 text-xs text-success flex items-center justify-between">
                   <span className="flex items-center gap-1.5 font-medium">
                     <span>✓</span>
                     <span>
                       {selectedMandate.runsCount || 1} purchase(s) already approved & completed under this mandate (
-                      <strong>${selectedMandate.totalSpent?.toFixed(2)}</strong> paid via PayPal).
+                      <strong>${selectedMandate.totalSpent?.toFixed(2)}</strong> paid via PayPal Sandbox).
                     </span>
                   </span>
                   <span className="font-semibold px-2 py-0.5 rounded bg-success/20 text-[10px]">
@@ -687,23 +885,6 @@ export default function DashboardPage() {
                   </span>
                 </div>
               )}
-
-              {/* Mandate Actions (Archive / Revoke) */}
-              <div className="flex items-center justify-between pt-1 border-t border-border/50 text-xs">
-                <span className="text-text-muted font-mono text-[10px]">{selectedMandate.id}</span>
-                {selectedMandate.status === "ACTIVE" ? (
-                  <button
-                    type="button"
-                    onClick={() => handleRevokeMandate(selectedMandate.id)}
-                    disabled={revokingMandateId === selectedMandate.id}
-                    className="text-text-muted hover:text-error text-xs font-medium underline transition cursor-pointer"
-                  >
-                    {revokingMandateId === selectedMandate.id ? "Archiving..." : "Archive / Revoke Duplicate"}
-                  </button>
-                ) : (
-                  <span className="text-error font-semibold text-xs">Archived / Revoked</span>
-                )}
-              </div>
             </div>
           )}
         </div>
@@ -970,16 +1151,67 @@ export default function DashboardPage() {
         ) : (
           <DataTable
             columns={[
-              { key: "purpose", header: "Purpose", width: "40%" },
-              { key: "status", header: "Status", width: "20%" },
+              { key: "purpose", header: "Purpose", width: "35%" },
+              { key: "status", header: "Status", width: "15%" },
               { key: "budget", header: "Monthly Budget", width: "20%" },
-              { key: "perItem", header: "Per-Item Cap", width: "20%" }
+              { key: "perItem", header: "Per-Item Cap", width: "15%" },
+              { key: "actions", header: "Actions", width: "15%" }
             ]}
             data={mandates}
             renderCell={(item, key) => {
+              if (key === "purpose") {
+                return (
+                  <div>
+                    <p className="font-semibold text-text-primary text-xs">{cleanPurposeText(item.purpose)}</p>
+                    <p className="text-[10px] font-mono text-text-muted">{item.id}</p>
+                  </div>
+                );
+              }
               if (key === "status") return <StatusBadge status={item.status as any} />;
-              if (key === "budget") return `$${item.period.budget.toFixed(2)}`;
+              if (key === "budget") {
+                return (
+                  <div>
+                    <span className="text-xs font-semibold text-text-primary">${item.period.budget.toFixed(2)}</span>
+                    {(item.totalSpent || 0) > 0 && (
+                      <span className="block text-[10px] text-text-muted">
+                        ${item.totalSpent?.toFixed(2)} spent
+                      </span>
+                    )}
+                  </div>
+                );
+              }
               if (key === "perItem") return item.caps.perItem !== null ? `$${item.caps.perItem}` : "—";
+              if (key === "actions") {
+                return (
+                  <div className="flex items-center gap-2">
+                    {item.id === mandateId ? (
+                      <span className="px-2 py-0.5 rounded bg-primary/20 text-primary text-[11px] font-bold">
+                        Selected ✓
+                      </span>
+                    ) : item.status === "ACTIVE" ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMandateId(item.id);
+                          document.getElementById("agent-runner")?.scrollIntoView({ behavior: "smooth" });
+                        }}
+                        className="px-2 py-0.5 rounded bg-surface hover:bg-surface-elevated border border-border text-[11px] font-semibold text-text-primary transition cursor-pointer"
+                      >
+                        Set Active
+                      </button>
+                    ) : null}
+                    {item.status === "ACTIVE" && (
+                      <button
+                        type="button"
+                        onClick={() => handleRevokeMandate(item.id)}
+                        className="text-[11px] text-text-muted hover:text-error underline transition ml-1 cursor-pointer"
+                      >
+                        Archive
+                      </button>
+                    )}
+                  </div>
+                );
+              }
               return item.purpose;
             }}
             rowKey={(item) => item.id}
