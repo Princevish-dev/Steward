@@ -4,11 +4,15 @@ import { findRefundForOrder, getRunContext, persistRefund } from "@/core/domain/
 import { recordLedgerEvent } from "@/core/ledger/store";
 import { assertPaymentAllowed } from "@/core/payment/guard";
 import { requireSessionOwner } from "@/core/auth/session";
+import { consumeRefundChallenge } from "@/core/approvals/typed-refund";
 
 export async function POST(request: Request) {
   let owner: string;
   try { owner = requireSessionOwner(request); } catch { return NextResponse.json({ error: "Authentication required." }, { status: 401 }); }
-  const body = await request.json().catch(() => null) as { runId?: unknown; orderId?: unknown; captureId?: unknown; amount?: unknown } | null;
+  const body = await request.json().catch(() => null) as {
+    runId?: unknown; orderId?: unknown; captureId?: unknown; amount?: unknown;
+    confirmation?: { nonce?: unknown; phrase?: unknown };
+  } | null;
   if (!body || typeof body.runId !== "string") {
     return NextResponse.json({ error: "runId is required." }, { status: 422 });
   }
@@ -34,6 +38,18 @@ export async function POST(request: Request) {
         status: existingRefund.status,
         idempotent: true
       });
+    }
+    if (process.env.FEATURE_TYPED_CONFIRM?.trim().toLowerCase() !== "false") {
+      if (typeof body.confirmation?.nonce !== "string" || typeof body.confirmation.phrase !== "string") {
+        return NextResponse.json({ error: "A one-time typed confirmation is required to refund." }, { status: 422 });
+      }
+      const confirmation = await consumeRefundChallenge({
+        runId: body.runId,
+        owner,
+        nonce: body.confirmation.nonce,
+        phrase: body.confirmation.phrase
+      });
+      if (!confirmation.ok) return NextResponse.json({ error: "Typed confirmation did not match or has expired." }, { status: 409 });
     }
     const refund = await refundSandboxCapture(context.capture_id);
     await persistRefund({ id: refund.id, orderId: context.order_id, status: refund.status, response: refund });

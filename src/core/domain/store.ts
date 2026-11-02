@@ -3,6 +3,8 @@ import type { Mandate } from "@/core/mandate/schema";
 import { recordLedgerEvent } from "@/core/ledger/store";
 import { getDatabasePool } from "@/db/client";
 import { ensureDatabaseMigrated } from "@/db/migrate";
+import { mandateFingerprint, mandateFingerprintEnabled, type FingerprintedMandate } from "@/core/mandate/fingerprint";
+import { canonicalJson } from "@/core/ledger/canonical";
 
 async function queryWithFallback(queryWithUserId: string, queryFallback: string, params: unknown[]) {
   try {
@@ -17,25 +19,26 @@ async function queryWithFallback(queryWithUserId: string, queryFallback: string,
 
 export async function createMandate(mandate: Mandate, userId?: string): Promise<void> {
   await ensureDatabaseMigrated();
+  const storedMandate: Mandate = { ...mandate, version: mandate.version ?? 1 };
   const uid = userId ?? mandate.owner;
   try {
     await getDatabasePool().query(
       `INSERT INTO mandates (id, owner, user_id, purpose, definition, status)
        VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
-      [mandate.id, mandate.owner, uid, mandate.purpose, JSON.stringify(mandate), mandate.status]
+      [storedMandate.id, storedMandate.owner, uid, storedMandate.purpose, JSON.stringify(storedMandate), storedMandate.status]
     );
   } catch {
     await getDatabasePool().query(
       `INSERT INTO mandates (id, owner, purpose, definition, status)
        VALUES ($1, $2, $3, $4::jsonb, $5)`,
-      [mandate.id, mandate.owner, mandate.purpose, JSON.stringify(mandate), mandate.status]
+      [storedMandate.id, storedMandate.owner, storedMandate.purpose, JSON.stringify(storedMandate), storedMandate.status]
     );
   }
   await recordLedgerEvent({
     type: "MANDATE_CREATED",
     runId: "system",
     mandateId: mandate.id,
-    payload: { status: mandate.status, owner: mandate.owner },
+    payload: { status: storedMandate.status, owner: storedMandate.owner, version: storedMandate.version, previousVersionId: storedMandate.previousVersionId ?? null },
     userId: uid
   });
 }
@@ -48,6 +51,35 @@ export async function getMandate(id: string): Promise<Mandate | null> {
   return result.rows[0]?.definition as Mandate | null;
 }
 
+export async function updateMandateDraft(mandate: Mandate, owner: string): Promise<Mandate | null> {
+  await ensureDatabaseMigrated();
+  const pool = getDatabasePool();
+  const selected = await pool.query(
+    "SELECT definition FROM mandates WHERE id = $1 AND owner = $2",
+    [mandate.id, owner]
+  );
+  const current = selected.rows[0]?.definition as Mandate | undefined;
+  if (!current || current.status !== "DRAFT") return null;
+  if (canonicalJson(current) === canonicalJson(mandate)) return current;
+
+  const updated = await pool.query(
+    `UPDATE mandates SET purpose = $3, definition = $4::jsonb, updated_at = now()
+     WHERE id = $1 AND owner = $2 AND status = 'DRAFT'
+     RETURNING definition`,
+    [mandate.id, owner, mandate.purpose, JSON.stringify(mandate)]
+  );
+  const saved = updated.rows[0]?.definition as Mandate | undefined;
+  if (!saved) return null;
+  await recordLedgerEvent({
+    type: "MANDATE_DRAFT_UPDATED",
+    runId: "system",
+    mandateId: mandate.id,
+    payload: { version: mandate.version ?? 1 },
+    userId: owner
+  });
+  return saved;
+}
+
 export async function listMandatesForOwner(owner: string): Promise<Array<{
   id: string;
   owner: string;
@@ -58,6 +90,9 @@ export async function listMandatesForOwner(owner: string): Promise<Array<{
   askAbove: number | null;
   categories: string[];
   expiresAt: string;
+  version?: number;
+  previousVersionId?: string;
+  fingerprint?: string;
   totalSpent?: number;
   runsCount?: number;
 }>> {
@@ -105,9 +140,9 @@ export async function listMandatesForOwner(owner: string): Promise<Array<{
       expiresAt
     };
     await createMandate(benchmarkMandate, owner);
-    await setMandateStatus(judgeMandateId, "ACTIVE");
+    const activeBenchmark = await setMandateStatus(judgeMandateId, "ACTIVE");
     return [{
-      ...benchmarkMandate,
+      ...(activeBenchmark ?? benchmarkMandate),
       status: "ACTIVE",
       totalSpent: 0,
       runsCount: 0
@@ -242,20 +277,40 @@ export async function listDisputesForOwner(owner: string) {
 }
 
 export async function setMandateStatus(id: string, status: "ACTIVE" | "REVOKED"): Promise<Mandate | null> {
-  const result = await getDatabasePool().query(
-    `UPDATE mandates
-     SET status = $2, definition = jsonb_set(definition, '{status}', to_jsonb($2::text)), updated_at = now()
-     WHERE id = $1
-     RETURNING definition`,
-    [id, status]
-  );
-  const mandate = result.rows[0]?.definition as Mandate | undefined;
+  const pool = getDatabasePool();
+  const client = await pool.connect();
+  let mandate: FingerprintedMandate | undefined;
+  try {
+    await client.query("BEGIN");
+    const selected = await client.query("SELECT definition FROM mandates WHERE id = $1 FOR UPDATE", [id]);
+    if (!selected.rows[0]) {
+      await client.query("COMMIT");
+      return null;
+    }
+
+    const current = selected.rows[0].definition as FingerprintedMandate;
+    mandate = { ...current, status, version: current.version ?? 1 };
+    if (status === "ACTIVE" && mandateFingerprintEnabled()) {
+      mandate.fingerprint = mandateFingerprint(mandate);
+    }
+    await client.query(
+      `UPDATE mandates SET status = $2, definition = $3::jsonb, updated_at = now() WHERE id = $1`,
+      [id, status, JSON.stringify(mandate)]
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+
   if (!mandate) return null;
   await recordLedgerEvent({
     type: status === "ACTIVE" ? "MANDATE_CONFIRMED" : "MANDATE_REVOKED",
     runId: "system",
     mandateId: id,
-    payload: { status },
+    payload: { status, version: mandate.version ?? 1, fingerprint: status === "ACTIVE" ? mandate.fingerprint ?? null : undefined },
     userId: mandate.owner
   });
   return mandate;

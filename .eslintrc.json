@@ -6,5 +6,19 @@
     "node": true
   },
   "extends": ["next/core-web-vitals"],
-  "ignorePatterns": [".next/", "node_modules/", "qa/"]
+  "ignorePatterns": [".next/", "node_modules/", "qa/"],
+  "overrides": [
+    {
+      "files": ["src/core/ai/**/*.{ts,tsx,js,jsx}", "src/core/agents/**/*.{ts,tsx,js,jsx}", "src/core/mandate/parser.{ts,tsx,js,jsx}"],
+      "rules": {
+        "no-restricted-imports": ["error", {
+          "patterns": [
+            { "group": ["@/core/paypal", "@/core/paypal/**", "../paypal", "../paypal/**"], "message": "AI and mandate parsing may not import payment providers." },
+            { "group": ["@/core/payment", "@/core/payment/**", "../payment", "../payment/**"], "message": "AI and mandate parsing may not import payment services." },
+            { "group": ["@/core/domain/store", "../domain/store"], "message": "AI and mandate parsing may not import domain persistence or write functions." }
+          ]
+        }]
+      }
+    }
+  ]
 }

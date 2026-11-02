@@ -1,11 +1,16 @@
 import { expect, test } from "@playwright/test";
+import { demoLogin } from "./helpers";
 
 test.describe("Steward judge journeys", () => {
+  test.beforeEach(async ({ page }) => {
+    await demoLogin(page);
+  });
+
   test("landing page loads with hero and CTAs", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: /Give your AI agent a mandate, not your credit card./ })).toBeVisible();
-    await expect(page.getByRole("link", { name: /Launch Control Room/ }).first()).toBeVisible();
-    await expect(page.getByRole("link", { name: /Create a Mandate/ }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: /Sign In to Platform/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /View API Documentation/ })).toBeVisible();
   });
 
   test("dashboard loads with system status and metrics", async ({ page }) => {

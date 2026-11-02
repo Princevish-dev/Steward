@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { demoLogin } from "./helpers";
 
 const ALL_PAGES = [
   { name: "landing", path: "/" },
@@ -20,15 +21,8 @@ const ALL_PAGES = [
 ];
 
 test.describe("Full Visual QA & Screenshot Matrix", () => {
-  let seeded = false;
-
   test.beforeEach(async ({ page }) => {
-    if (!seeded) {
-      await page.request.post("/api/auth/login", {
-        data: { email: "judge@example.com" }
-      }).catch(() => {});
-      seeded = true;
-    }
+    await demoLogin(page);
   });
 
   for (const pageItem of ALL_PAGES) {

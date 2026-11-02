@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
+import { demoLogin } from "./helpers";
 
 test.describe("Key pages verification", () => {
+  test.beforeEach(async ({ page }) => {
+    await demoLogin(page);
+  });
+
   test("landing page renders with hero", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: /Give your AI agent a mandate, not your credit card./ })).toBeVisible();

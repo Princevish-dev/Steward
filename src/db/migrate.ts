@@ -1,12 +1,16 @@
 import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { getDatabasePool } from "@/db/client";
 
 let migrated = false;
+let migrationPromise: Promise<void> | null = null;
+
+export function getSchemaPath(projectRoot = process.cwd()): string {
+  return resolve(projectRoot, "src", "db", "schema.sql");
+}
 
 export async function migrateDatabase(): Promise<void> {
-  const schemaPath = fileURLToPath(new URL("./schema.sql", import.meta.url));
-  const schema = await readFile(schemaPath, "utf8");
+  const schema = await readFile(getSchemaPath(), "utf8");
   await getDatabasePool().query(schema);
   migrated = true;
 }
@@ -14,9 +18,13 @@ export async function migrateDatabase(): Promise<void> {
 export async function ensureDatabaseMigrated(): Promise<void> {
   if (migrated) return;
   if (!process.env.DATABASE_URL) return;
-  try {
-    await migrateDatabase();
-  } catch (error) {
-    console.error("Database auto-migration warning:", error instanceof Error ? error.message : error);
+
+  if (!migrationPromise) {
+    migrationPromise = migrateDatabase().catch((error) => {
+      console.error("Database auto-migration warning:", error instanceof Error ? error.message : error);
+      migrationPromise = null;
+    });
   }
+
+  await migrationPromise;
 }

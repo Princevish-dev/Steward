@@ -8,3 +8,4 @@ out
 *.tsbuildinfo
 .neon
 test-results/
+.playwright-browsers/

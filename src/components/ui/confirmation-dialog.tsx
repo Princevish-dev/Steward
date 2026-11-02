@@ -11,6 +11,9 @@ type ConfirmationDialogProps = {
   confirmLabel?: string;
   confirmVariant?: "danger" | "primary" | "success";
   cancelLabel?: string;
+  children?: React.ReactNode;
+  confirmDisabled?: boolean;
+  confirmLoading?: boolean;
 };
 
 export function ConfirmationDialog({
@@ -21,7 +24,10 @@ export function ConfirmationDialog({
   description,
   confirmLabel = "Confirm",
   confirmVariant = "primary",
-  cancelLabel = "Cancel"
+  cancelLabel = "Cancel",
+  children,
+  confirmDisabled = false,
+  confirmLoading = false
 }: ConfirmationDialogProps) {
   if (!isOpen) return null;
 
@@ -42,6 +48,7 @@ export function ConfirmationDialog({
           {title}
         </h2>
         <p className="text-sm text-text-secondary mb-6">{description}</p>
+        {children}
         <div className="flex gap-2">
           <button
             onClick={onCancel}
@@ -51,11 +58,12 @@ export function ConfirmationDialog({
           </button>
           <button
             onClick={onConfirm}
+            disabled={confirmDisabled || confirmLoading}
             className={`flex-1 rounded-md px-4 py-2 text-sm font-medium focus-visible-outline cursor-pointer ${
               confirmVariant === "danger" ? "bg-error text-error-bg hover:bg-error" : "bg-primary text-primary-text hover:bg-primary-hover"
             }`}
           >
-            {confirmLabel}
+            {confirmLoading ? "Working..." : confirmLabel}
           </button>
         </div>
       </div>

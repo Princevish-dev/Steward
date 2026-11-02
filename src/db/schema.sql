@@ -87,6 +87,22 @@ CREATE INDEX IF NOT EXISTS mandate_api_keys_mandate_idx ON mandate_api_keys (man
 
 ALTER TABLE mandates ALTER COLUMN status SET DEFAULT 'DRAFT';
 ALTER TABLE approvals ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+CREATE TABLE IF NOT EXISTS typed_confirm_challenges (
+  approval_id UUID PRIMARY KEY REFERENCES approvals(id) ON DELETE CASCADE,
+  owner TEXT NOT NULL,
+  nonce_hash CHAR(64) NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  expires_at TIMESTAMPTZ NOT NULL,
+  consumed_at TIMESTAMPTZ
+);
+CREATE TABLE IF NOT EXISTS typed_refund_challenges (
+  run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
+  owner TEXT NOT NULL,
+  nonce_hash CHAR(64) NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  expires_at TIMESTAMPTZ NOT NULL,
+  consumed_at TIMESTAMPTZ
+);
 ALTER TABLE payment_orders ADD COLUMN IF NOT EXISTS cart_hash CHAR(64);
 ALTER TABLE payment_orders ADD COLUMN IF NOT EXISTS capture_id TEXT;
 ALTER TABLE payment_orders ADD COLUMN IF NOT EXISTS tracking_carrier TEXT;

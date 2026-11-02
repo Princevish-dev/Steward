@@ -5,6 +5,7 @@ import type { PurchaseHistory } from "@/core/policy/types";
 import { getMandate, persistRun, createApproval, getPurchaseHistory, listRunsForOwner } from "@/core/domain/store";
 import { cartHash } from "@/core/payment/cart-hash";
 import { mandateStatusDecision } from "@/core/mandate/lifecycle";
+import { mandateFingerprint, mandateFingerprintEnabled, verifyMandateFingerprint } from "@/core/mandate/fingerprint";
 import { reviewPurchase } from "@/core/policy/reviewer";
 import { useLlm } from "@/core/ai/client";
 import { recordLedgerEvent } from "@/core/ledger/store";
@@ -51,6 +52,29 @@ export async function POST(request: Request) {
     const mandate = await getMandate(mandateId);
     if (!mandate) return NextResponse.json({ error: "Mandate not found." }, { status: 404 });
     if (!ownsMandate(sessionOwner, mandate.owner)) return NextResponse.json({ error: "Mandate access denied." }, { status: 403 });
+    const runId = `run_${crypto.randomUUID()}`;
+    if (mandate.status === "ACTIVE" && mandateFingerprintEnabled() && !verifyMandateFingerprint(mandate)) {
+      const actualFingerprint = mandateFingerprint(mandate);
+      await recordLedgerEvent({
+        type: "MANDATE_TAMPERED",
+        runId,
+        mandateId: mandate.id,
+        payload: {
+          reason: "MANDATE_TAMPERED",
+          expectedFingerprint: mandate.fingerprint ?? null,
+          actualFingerprint
+        },
+        userId: sessionOwner
+      });
+      return NextResponse.json({
+        runId,
+        mandateId: mandate.id,
+        decision: "BLOCK",
+        reason: "MANDATE_TAMPERED",
+        paymentAttempted: false,
+        ruleResults: [{ id: "MANDATE_FINGERPRINT", passed: false, reason: "MANDATE_TAMPERED" }]
+      }, { status: 409 });
+    }
     const validScenario = scenario === "within" || scenario === "ask" || scenario === "over-cap" || scenario === "hostile";
     const isCustomTask = Boolean(task && task.trim() && !task.startsWith("A4 printer paper") && !task.startsWith("Paper and coffee") && !task.startsWith("Bulk luxury") && !task.startsWith("Office supplies with injection"));
     const shopper = (validScenario && !isCustomTask)
@@ -109,8 +133,6 @@ export async function POST(request: Request) {
         unitPrice: item.unitPrice
       }))
     });
-    const runId = `run_${crypto.randomUUID()}`;
-
     await persistRun({
       runId,
       mandate,

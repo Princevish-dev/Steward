@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { PageHeader } from "@/components/ui/page-header";
@@ -30,6 +31,8 @@ type MandateRow = {
   askAbove: number | null;
   categories: string[];
   expiresAt: string;
+  version?: number;
+  fingerprint?: string;
   totalSpent?: number;
   runsCount?: number;
 };
@@ -41,6 +44,7 @@ function cleanPurposeText(purpose: string): string {
 }
 
 export default function MandatesPage() {
+  const router = useRouter();
   const [mandates, setMandates] = useState<MandateRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +69,22 @@ export default function MandatesPage() {
   }, []);
 
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [amendingId, setAmendingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const handleAmend = async (id: string) => {
+    setAmendingId(id);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/mandates/${id}/amend`, { method: "POST" });
+      const body = await readJson<{ mandate?: { id: string }; error?: string }>(res);
+      if (!res.ok || !body.mandate?.id) throw new Error(body.error ?? `Could not create amendment (${res.status}).`);
+      router.push(`/new?draftId=${encodeURIComponent(body.mandate.id)}`);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not create amendment.");
+    } finally {
+      setAmendingId(null);
+    }
+  };
   const handleRevoke = async (id: string) => {
     if (!window.confirm("Are you sure you want to archive/revoke this mandate?")) return;
     setRevokingId(id);
@@ -127,6 +147,8 @@ export default function MandatesPage() {
         }
       />
 
+      {actionError && <p role="alert" className="mb-4 rounded border border-error p-3 text-sm text-error">{actionError}</p>}
+
       {mandates.length === 0 ? (
         <EmptyState
           title="No mandates found"
@@ -149,6 +171,12 @@ export default function MandatesPage() {
                 <div>
                   <p className="font-semibold text-text-primary text-xs">{cleanPurposeText(item.purpose)}</p>
                   <p className="text-[10px] font-mono text-text-muted">{item.id}</p>
+                  {item.version && <p className="text-[10px] text-text-muted">Version {item.version}</p>}
+                  {item.fingerprint && (
+                    <p className="text-[10px] font-mono text-success" title={item.fingerprint}>
+                      Fingerprint {item.fingerprint.slice(0, 12)}…
+                    </p>
+                  )}
                 </div>
               );
             }
@@ -178,6 +206,15 @@ export default function MandatesPage() {
                   {item.status === "ACTIVE" && (
                     <button
                       type="button"
+                      disabled={amendingId !== null}
+                      onClick={() => void handleAmend(item.id)}
+                      className="text-[11px] text-primary underline disabled:opacity-50"
+                    >
+                      {amendingId === item.id ? "Creating..." : "Amend"}
+                    </button>
+                  )}
+                  {item.status === "ACTIVE" && (
+                    <button
                       disabled={revokingId === item.id}
                       onClick={() => handleRevoke(item.id)}
                       className="text-[11px] text-text-muted hover:text-error underline transition ml-1 cursor-pointer"

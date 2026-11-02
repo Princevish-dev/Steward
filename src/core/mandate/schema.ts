@@ -36,6 +36,9 @@ export const mandateSchema = z
     }),
     expiresAt: z.string().datetime(),
     status: z.enum(["DRAFT", "ACTIVE", "REVOKED", "EXPIRED"]),
+    version: z.number().int().positive().optional(),
+    previousVersionId: z.string().min(1).optional(),
+    fingerprint: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
     source: z.enum(["llm", "fallback"]).optional()
   })
   .strict();

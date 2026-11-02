@@ -41,12 +41,16 @@ services:
         value: "true"
       - key: APP_BASE_URL
         sync: false
+      - key: CRON_SECRET
+        sync: false
   - type: cron
     name: steward-keep-warm
     schedule: "*/10 * * * *"
     runtime: node
     buildCommand: npm ci
-    startCommand: node -e "fetch(process.env.APP_BASE_URL + '/api/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
+    startCommand: node -e "fetch(process.env.APP_BASE_URL + '/api/cron/maintenance', {method: 'POST', headers: {'x-cron-secret': process.env.CRON_SECRET}}).then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
     envVars:
       - key: APP_BASE_URL
+        sync: false
+      - key: CRON_SECRET
         sync: false

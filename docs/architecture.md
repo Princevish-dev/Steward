@@ -1,5 +1,7 @@
 # Steward Architecture Specification
 
+Confirmed mandates carry a versioned SHA-256 fingerprint over canonical JSON. Runs verify the persisted definition before shopper or AI work; a mismatch is recorded as `MANDATE_TAMPERED` and blocks the run. Edits to confirmed mandates go through a new draft version. See [ADR 0005](adr/0005-frozen-mandate-fingerprint.md).
+
 Steward is an autonomous procurement platform governed by explicit human mandates, a 13-rule deterministic policy engine, and a tamper-evident cryptographic audit ledger.
 
 ---

@@ -92,7 +92,13 @@ export default function ApiDocsPage() {
               <tr>
                 <td className="px-4 py-3 text-xs text-text-secondary font-mono">GET|PATCH</td>
                 <td className="px-4 py-3 text-sm text-text-primary">/api/approvals</td>
-                <td className="px-4 py-3 text-sm text-text-secondary">List and resolve human approvals</td>
+                <td className="px-4 py-3 text-sm text-text-secondary">List, typed-confirm approval, or reject</td>
+                <td className="px-4 py-3 text-xs text-text-secondary">Session Cookie</td>
+              </tr>
+              <tr>
+                <td className="px-4 py-3 text-xs text-text-secondary font-mono">POST</td>
+                <td className="px-4 py-3 text-sm text-text-primary">/api/approvals/{'{id}'}/challenge</td>
+                <td className="px-4 py-3 text-sm text-text-secondary">Issue a five-minute approval nonce and amount phrase</td>
                 <td className="px-4 py-3 text-xs text-text-secondary">Session Cookie</td>
               </tr>
               <tr>
@@ -110,7 +116,13 @@ export default function ApiDocsPage() {
               <tr>
                 <td className="px-4 py-3 text-xs text-text-secondary font-mono">POST</td>
                 <td className="px-4 py-3 text-sm text-text-primary">/api/paypal/refund</td>
-                <td className="px-4 py-3 text-sm text-text-secondary">Refund a captured payment</td>
+                <td className="px-4 py-3 text-sm text-text-secondary">Refund after typed confirmation</td>
+                <td className="px-4 py-3 text-xs text-text-secondary">Session Cookie</td>
+              </tr>
+              <tr>
+                <td className="px-4 py-3 text-xs text-text-secondary font-mono">POST</td>
+                <td className="px-4 py-3 text-sm text-text-primary">/api/paypal/refund/challenge</td>
+                <td className="px-4 py-3 text-sm text-text-secondary">Issue a five-minute refund nonce and amount phrase</td>
                 <td className="px-4 py-3 text-xs text-text-secondary">Session Cookie</td>
               </tr>
               <tr>

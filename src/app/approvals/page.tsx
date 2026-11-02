@@ -35,9 +35,15 @@ export default function ApprovalsPage() {
   const [error, setError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingApproval, setPendingApproval] = useState<{ id: string; status: "APPROVED" | "REJECTED" } | null>(null);
+  const [typedChallenge, setTypedChallenge] = useState<{ nonce: string; prompt: string } | null>(null);
+  const [typedPhrase, setTypedPhrase] = useState("");
+  const [challengeLoading, setChallengeLoading] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const fetchApprovals = useCallback(async () => {
     setLoading(true);
+    setActionError(null);
     setError(null);
     try {
       const response = await fetch("/api/approvals");
@@ -56,21 +62,50 @@ export default function ApprovalsPage() {
 
   const resolveApproval = async (id: string, status: "APPROVED" | "REJECTED") => {
     setLoading(true);
+    setActionError(null);
+    setActionMessage(null);
     try {
+      const confirmation = status === "APPROVED" && typedChallenge
+        ? { nonce: typedChallenge.nonce, phrase: typedPhrase }
+        : undefined;
       const response = await fetch("/api/approvals", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id, status, reviewer: "dashboard-user" })
+        body: JSON.stringify({ id, status, confirmation })
       });
       const body = await readJson<{ approval?: ApprovalRow; error?: string }>(response);
       if (!response.ok || !body.approval) {
         throw new Error(body.error ?? `Could not ${status.toLowerCase()} approval.`);
       }
-      void fetchApprovals();
+      setConfirmOpen(false);
+      setPendingApproval(null);
+      setTypedChallenge(null);
+      setTypedPhrase("");
+      setActionMessage(status === "APPROVED" ? "Approval confirmed and recorded in the ledger." : "Approval rejected and recorded.");
+      await fetchApprovals();
     } catch (err) {
-      setError(err instanceof Error ? err.message : `Could not ${status.toLowerCase()} approval.`);
+      setActionError(err instanceof Error ? err.message : `Could not ${status.toLowerCase()} approval.`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const beginApproval = async (id: string) => {
+    setPendingApproval({ id, status: "APPROVED" });
+    setChallengeLoading(true);
+    setActionError(null);
+    setTypedPhrase("");
+    try {
+      const response = await fetch(`/api/approvals/${encodeURIComponent(id)}/challenge`, { method: "POST" });
+      const body = await readJson<{ nonce?: string; prompt?: string; error?: string }>(response);
+      if (!response.ok || !body.nonce || !body.prompt) throw new Error(body.error ?? "Could not prepare typed approval.");
+      setTypedChallenge({ nonce: body.nonce, prompt: body.prompt });
+      setConfirmOpen(true);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not prepare typed approval.");
+      setPendingApproval(null);
+    } finally {
+      setChallengeLoading(false);
     }
   };
 
@@ -113,6 +148,9 @@ export default function ApprovalsPage() {
         breadcrumbs={[{ label: "Dashboard", href: "/dashboard" }, { label: "Approvals", href: "/approvals" }]}
       />
 
+      {actionError && <p role="alert" className="mb-4 rounded border border-error p-3 text-sm text-error">{actionError}</p>}
+      {actionMessage && <p role="status" className="mb-4 rounded border border-success p-3 text-sm text-success">{actionMessage}</p>}
+
       {pending.length === 0 ? (
         <EmptyState
           title="No pending approvals"
@@ -140,12 +178,10 @@ export default function ApprovalsPage() {
                   <Button
                     variant="success"
                     size="sm"
-                    onClick={() => {
-                      setPendingApproval({ id: approval.id, status: "APPROVED" });
-                      setConfirmOpen(true);
-                    }}
+                    disabled={challengeLoading}
+                    onClick={() => void beginApproval(approval.id)}
                   >
-                    Approve
+                    {challengeLoading && pendingApproval?.id === approval.id ? "Preparing..." : "Approve"}
                   </Button>
                   <Button
                     variant="danger"
@@ -188,9 +224,13 @@ export default function ApprovalsPage() {
       <ConfirmationDialog
         isOpen={confirmOpen}
         title={pendingApproval ? `Confirm ${pendingApproval.status.toLowerCase()}` : ""}
-        description={pendingApproval ? `Are you sure you want to ${pendingApproval.status.toLowerCase()} this approval request?` : ""}
+        description={pendingApproval?.status === "APPROVED" && typedChallenge
+          ? `Type the server-computed amount phrase below to approve this request. This one-time challenge expires in five minutes.`
+          : pendingApproval ? `Are you sure you want to ${pendingApproval.status.toLowerCase()} this approval request?` : ""}
         confirmLabel="Confirm"
         confirmVariant={pendingApproval?.status === "APPROVED" ? "success" : "danger"}
+        confirmDisabled={pendingApproval?.status === "APPROVED" && (!typedChallenge || typedPhrase !== typedChallenge.prompt)}
+        confirmLoading={loading}
         onConfirm={() => {
           if (pendingApproval) {
             resolveApproval(pendingApproval.id, pendingApproval.status);
@@ -198,7 +238,20 @@ export default function ApprovalsPage() {
           setConfirmOpen(false);
         }}
         onCancel={() => setConfirmOpen(false)}
-      />
+      >
+        {pendingApproval?.status === "APPROVED" && typedChallenge && (
+          <label className="mb-5 block text-sm text-text-primary">
+            Type <span className="font-mono font-semibold">{typedChallenge.prompt}</span>
+            <input
+              autoFocus
+              value={typedPhrase}
+              onChange={(event) => setTypedPhrase(event.target.value)}
+              aria-label={`Type ${typedChallenge.prompt} to approve`}
+              className="mt-2 w-full rounded border border-border bg-surface px-3 py-2 font-mono"
+            />
+          </label>
+        )}
+      </ConfirmationDialog>
     </div>
   );
 }

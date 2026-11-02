@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,9 @@ type MandateDraft = {
   velocity: { maxAutoPurchasesPer24h: number };
   expiresAt: string;
   status: string;
+  version?: number;
+  previousVersionId?: string;
+  fingerprint?: string;
   source?: string;
 };
 
@@ -50,9 +53,75 @@ export default function NewMandatePage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [draftSaveState, setDraftSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const suppressAutoSave = useRef(false);
 
   const currentStepIndex = stepOrder.indexOf(step);
+
+  const persistDraft = useCallback(async (draftToSave: MandateDraft) => {
+    setDraftSaveState("saving");
+    try {
+      const response = await fetch(`/api/mandates/${draftToSave.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(draftToSave)
+      });
+      const result = await readJson<{ mandate?: MandateDraft; error?: string }>(response);
+      if (!response.ok || !result.mandate) {
+        throw new Error(result.error ?? "Draft changes could not be saved.");
+      }
+      setDraftSaveState("saved");
+      return result.mandate;
+    } catch (saveError) {
+      setDraftSaveState("error");
+      setError(saveError instanceof Error ? saveError.message : "Draft changes could not be saved.");
+      throw saveError;
+    }
+  }, []);
+
+  useEffect(() => {
+    const draftId = new URLSearchParams(window.location.search).get("draftId");
+    if (!draftId) return;
+
+    let cancelled = false;
+    setStep("parsing");
+    setLoading(true);
+    setMessage("Loading saved mandate version…");
+    void (async () => {
+      try {
+        const response = await fetch(`/api/mandates/${encodeURIComponent(draftId)}`);
+        const result = await readJson<{ mandate?: MandateDraft; error?: string }>(response);
+        if (!response.ok || !result.mandate) throw new Error(result.error ?? "Saved mandate could not be loaded.");
+        if (cancelled) return;
+        setDraft(result.mandate);
+        setOwner(result.mandate.owner);
+        setPurpose(result.mandate.purpose);
+        setClarifications([]);
+        setMessage("Amendment draft loaded. Edits are saved automatically; confirm to activate this version.");
+        setStep("review");
+      } catch (loadError) {
+        if (cancelled) return;
+        setError(loadError instanceof Error ? loadError.message : "Saved mandate could not be loaded.");
+        setStep("intent");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!draft || draft.status !== "DRAFT") return;
+    const timeout = setTimeout(() => {
+      if (suppressAutoSave.current) return;
+      void persistDraft(draft).catch(() => undefined);
+    }, 500);
+    return () => clearTimeout(timeout);
+  }, [draft, persistDraft]);
 
   const parseMandate = useCallback(async () => {
     if (!owner || !purpose) {
@@ -88,11 +157,24 @@ export default function NewMandatePage() {
         setStep("intent");
         return;
       }
-      setDraft(result.mandate);
+      const createResponse = await fetch("/api/mandates", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          owner: result.mandate.owner,
+          intent: result.mandate.purpose,
+          mandate: { ...result.mandate, version: 1, status: "DRAFT" }
+        })
+      });
+      const created = await readJson<{ mandate?: MandateDraft; error?: string }>(createResponse);
+      if (!createResponse.ok || !created.mandate) {
+        throw new Error(created.error ?? "Draft mandate could not be saved.");
+      }
+      setDraft(created.mandate);
       setClarifications(
         (result.clarifications ?? []).map((msg, i) => ({ field: `clarification-${i}`, message: msg }))
       );
-      setMessage("Draft parsed. Review and customize the limits below, then confirm to activate.");
+      setMessage("Draft parsed and saved. Review and customize the limits below, then confirm to activate.");
       setStep("review");
     } catch (err) {
       clearTimeout(timeoutId);
@@ -125,32 +207,19 @@ export default function NewMandatePage() {
     if (!draft) return;
     setLoading(true);
     setError(null);
+    suppressAutoSave.current = true;
     try {
-      const basePurpose = draft.purpose.split("; max $")[0];
-      const intent = `${basePurpose}; max ${draft.period.budget} a month; nothing over ${draft.caps.perItem ?? 0}; ask me above ${draft.askAbove ?? 0}`;
-      const createResponse = await fetch("/api/mandates", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          owner: draft.owner,
-          intent,
-          mandate: {
-            ...draft,
-            period: { type: "monthly", budget: Number(draft.period.budget) },
-            caps: {
-              perItem: draft.caps.perItem !== null ? Number(draft.caps.perItem) : null,
-              perTransaction: 80,
-              maxQuantityPerItem: draft.caps.maxQuantityPerItem ?? 4
-            },
-            askAbove: draft.askAbove !== null ? Number(draft.askAbove) : null
-          }
-        })
+      const pending = await persistDraft({
+        ...draft,
+        period: { type: "monthly", budget: Number(draft.period.budget) },
+        caps: {
+          perItem: draft.caps.perItem !== null ? Number(draft.caps.perItem) : null,
+          perTransaction: draft.caps.perTransaction ?? 80,
+          maxQuantityPerItem: draft.caps.maxQuantityPerItem ?? 4
+        },
+        askAbove: draft.askAbove !== null ? Number(draft.askAbove) : null
       });
-      const created = await readJson<{ mandate?: MandateDraft; error?: string }>(createResponse);
-      if (!createResponse.ok || !created.mandate) {
-        throw new Error(created.error ?? "Could not persist mandate.");
-      }
-      const response = await fetch(`/api/mandates/${created.mandate.id}/confirm`, { method: "POST" });
+      const response = await fetch(`/api/mandates/${pending.id}/confirm`, { method: "POST" });
       const result = await readJson<{ mandate?: MandateDraft; error?: string }>(response);
       if (!response.ok || !result.mandate) {
         throw new Error(result.error ?? "Could not activate mandate.");
@@ -164,6 +233,7 @@ export default function NewMandatePage() {
       setError(err instanceof Error ? err.message : "Could not activate mandate.");
       setStep("confirm");
     } finally {
+      suppressAutoSave.current = false;
       setLoading(false);
     }
   };
@@ -191,7 +261,7 @@ export default function NewMandatePage() {
   return (
     <div className="page-container">
       <PageHeader
-        title="Create a Mandate"
+        title={draft?.previousVersionId ? "Amend Mandate" : "Create a Mandate"}
         subtitle="Describe what your agent may buy. Steward turns plain English into explicit limits before anything can be paid."
         breadcrumbs={[{ label: "Dashboard", href: "/dashboard" }, { label: "Create Mandate", href: "/new" }]}
       />
@@ -290,6 +360,11 @@ export default function NewMandatePage() {
           <div className="space-y-6">
             <div className="bg-surface-elevated rounded-lg p-5 border border-border">
               <h4 className="text-sm font-semibold text-text-primary mb-4">Review & Edit Draft</h4>
+              <div role="status" className={`mb-4 text-xs ${draftSaveState === "error" ? "text-error" : "text-text-muted"}`}>
+                {draftSaveState === "saving" && "Saving draft edits…"}
+                {draftSaveState === "saved" && "Draft saved"}
+                {draftSaveState === "error" && "Draft could not be saved. Correct the issue and retry."}
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-xs font-semibold text-text-secondary mb-1">Monthly Budget ($)</label>
@@ -455,6 +530,10 @@ export default function NewMandatePage() {
               <p className="text-sm font-mono text-text-primary mb-4">{draft.id}</p>
               <p className="text-xs font-semibold text-text-secondary mb-2">Status</p>
               <StatusBadge status={draft.status as any} />
+              <p className="text-xs font-semibold text-text-secondary mt-4 mb-2">Confirmed Fingerprint</p>
+              <p className="text-sm font-mono text-text-primary" title={draft.fingerprint ?? undefined}>
+                {draft.fingerprint ? `${draft.fingerprint.slice(0, 12)}…` : "Fingerprint protection disabled"}
+              </p>
               <p className="text-xs font-semibold text-text-secondary mt-4 mb-2">Monthly Budget</p>
               <p className="text-sm text-text-primary">${draft.period.budget}</p>
             </div>

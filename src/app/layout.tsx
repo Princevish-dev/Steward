@@ -3,7 +3,10 @@ import type { ReactNode } from "react";
 import "./globals.css";
 import { MainLayout } from "@/components/layout/main-layout";
 
+const publicBaseUrl = process.env.APP_BASE_URL?.trim() || "https://steward-w7pk.onrender.com";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(publicBaseUrl),
   title: {
     template: "%s | Steward AI",
     default: "Steward AI — Autonomous Shopping with User Control"
