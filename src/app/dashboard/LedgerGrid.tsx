@@ -62,7 +62,7 @@ export default function LedgerGrid({
     <section aria-label="ledger grid" style={{ marginTop: "3rem" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".75rem", flexWrap: "wrap" }}>
         <h2>Ledger grid</h2>
-        <div>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: ".5rem" }}>
           <input aria-label="Quick filter ledger" value={quickFilter} onChange={(event) => setQuickFilter(event.target.value)}
             placeholder="Quick filter" style={{ width: 150, padding: ".45rem" }} />
           <strong style={{ color: valid === false ? "#ff7b8b" : valid ? "#6ee7b7" : "#b8c0d9" }}>
@@ -83,9 +83,9 @@ export default function LedgerGrid({
             onClick={() => downloadExport("json")}
             disabled={!mandateId || rows.length === 0}
             title="Download verifiable ledger audit packet in JSON format"
-            style={{ marginLeft: ".5rem", padding: ".45rem .7rem" }}
+            style={{ padding: ".45rem .7rem" }}
           >
-            Export JSON
+            Export as JSON
           </button>
           <button type="button" onClick={() => setPreviewRows(rows.length ? rows.map((row, index) => index === 0 ? { ...row, entryHash: `${row.entryHash}-tampered` } : row) : rows)}
             disabled={rows.length === 0} style={{ marginLeft: ".5rem", padding: ".45rem .7rem" }}>
