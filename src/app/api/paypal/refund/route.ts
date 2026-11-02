@@ -17,7 +17,7 @@ export async function POST(request: Request) {
   }
   try {
     const context = await getRunContext(body.runId);
-    if (!context || !context.order_id || !context.capture_id || context.order_status !== "COMPLETED") {
+    if (!context || !context.order_id || !context.capture_id || (context.order_status !== "COMPLETED" && context.order_status !== "PAID")) {
       return NextResponse.json({ error: "A completed captured order is required." }, { status: 409 });
     }
     if ((context.mandate as { owner?: string }).owner !== owner) return NextResponse.json({ error: "Run access denied." }, { status: 403 });

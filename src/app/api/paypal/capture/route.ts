@@ -24,8 +24,8 @@ export async function POST(request: Request) {
       approval: context.approval_id ? { status: context.approval_status, expiresAt: context.approval_expires_at } : null,
       now: new Date()
     });
-    if (context.order_status === "COMPLETED") {
-      return NextResponse.json({ orderId: context.order_id, status: "COMPLETED", idempotent: true });
+    if (context.order_status === "PAID" || context.order_status === "COMPLETED") {
+      return NextResponse.json({ orderId: context.order_id, status: "PAID", idempotent: true });
     }
     const order = await captureSandboxOrder(context.order_id);
     const captureId = order.purchase_units?.[0]?.payments?.captures?.[0]?.id ?? null;
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     const captureLedger = await markOrderCaptured(body.runId, captureId, amount);
     const tracking = await addShipmentTracking(order.id, body.runId);
     await persistTracking(body.runId, tracking);
-    return NextResponse.json({ orderId: order.id, status: order.status, captureId, tracking, ledgerSequence: captureLedger?.sequence });
+    return NextResponse.json({ orderId: order.id, status: "PAID", captureId, tracking, ledgerSequence: captureLedger?.sequence });
   } catch (error) {
     const message = error instanceof Error ? error.message : "PayPal capture failed.";
     const status = message === "MANDATE_REVOKED" || message === "PAYMENT_BLOCKED" ? 403 : 502;

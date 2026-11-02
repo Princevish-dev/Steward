@@ -65,6 +65,7 @@ type RunnerResult = {
   total: number;
   items: Array<{ productId?: string; title?: string; unitPrice: number; quantity: number }>;
   paypalOrderId?: string | null;
+  paypalApprovalUrl?: string | null;
   paypalCaptureId?: string | null;
   paypalStatus?: string | null;
   ledgerSequence?: number | null;
@@ -83,6 +84,10 @@ export default function DashboardPage() {
   const [mandateId, setMandateId] = useState<string | null>(null);
   const [ledgerValid, setLedgerValid] = useState<boolean | null>(null);
   const [verifyingLedger, setVerifyingLedger] = useState(false);
+  const [capturingOrder, setCapturingOrder] = useState(false);
+
+  // Return & capture notification banner
+  const [paypalBanner, setPaypalBanner] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   // Agent Shopping Runner state
   const [taskPrompt, setTaskPrompt] = useState("Order 2 packs of A4 printer paper and medium roast coffee");
@@ -93,15 +98,36 @@ export default function DashboardPage() {
 
   // Approval action state
   const [processingApprovalId, setProcessingApprovalId] = useState<string | null>(null);
-  const [approvalMessage, setApprovalMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [approvalMessage, setApprovalMessage] = useState<{
+    text: string;
+    type: "success" | "error";
+    approvalUrl?: string | null;
+  } | null>(null);
 
-  // Read mandateId from URL query string if present
+  // Read URL query parameters on load
   useEffect(() => {
     if (typeof window !== "undefined") {
       const urlParams = new URLSearchParams(window.location.search);
       const urlMandateId = urlParams.get("mandateId");
       if (urlMandateId) {
         setMandateId(urlMandateId);
+      }
+
+      const paypalStatus = urlParams.get("paypal");
+      const orderId = urlParams.get("orderId");
+      const captureId = urlParams.get("captureId");
+      const errMsg = urlParams.get("message");
+
+      if (paypalStatus === "captured") {
+        setPaypalBanner({
+          type: "success",
+          message: `✓ PayPal Sandbox Payment Captured! Order: ${orderId ?? "Approved"}, Capture ID: ${captureId ?? "Captured"}. Marked as PAID and cryptographically recorded in the SHA-256 Ledger.`
+        });
+      } else if (paypalStatus === "error") {
+        setPaypalBanner({
+          type: "error",
+          message: `PayPal Error: ${errMsg ?? "Payment capture was not completed."}`
+        });
       }
     }
   }, []);
@@ -158,7 +184,7 @@ export default function DashboardPage() {
     void refreshDashboard();
   }, [refreshDashboard]);
 
-  // Execute Agent Shopping Run & Live PayPal Execution
+  // Execute Agent Shopping Run (Two-Step Creation with Approval Link)
   const executeAgentRun = async (scenario?: "within" | "ask" | "over-cap", customTask?: string) => {
     if (!mandateId) {
       setRunnerError("Please select an active mandate first or create one.");
@@ -168,7 +194,7 @@ export default function DashboardPage() {
     const taskToRun = customTask || taskPrompt || "A4 printer paper and medium roast coffee beans";
     setRunningRunner(true);
     setRunnerError(null);
-    setRunnerStatusMessage("1/3 Dispatching AI Shopper Agent & evaluating policy engine...");
+    setRunnerStatusMessage("1/2 Dispatching AI Shopper Agent & evaluating policy engine...");
 
     try {
       // 1. Dispatch Run
@@ -204,38 +230,27 @@ export default function DashboardPage() {
       const reviewerRationale = runData.reviewer?.rationale || runData.ai?.reviewerRationale || null;
 
       let paypalOrderId: string | null = null;
+      let paypalApprovalUrl: string | null = null;
       let paypalCaptureId: string | null = null;
       let paypalStatus: string | null = null;
       let ledgerSeq: number | null = null;
 
-      // 2. If AUTO_APPROVE, execute Live PayPal Sandbox Order & Capture immediately!
+      // 2. If AUTO_APPROVE, create the PayPal Sandbox Order (AWAITING_PAYPAL_APPROVAL)
+      // DO NOT call /capture immediately (prevent status 422)!
       if (decision === "AUTO_APPROVE") {
-        setRunnerStatusMessage("2/3 Policy passed (AUTO_APPROVE). Creating live PayPal Sandbox Order...");
+        setRunnerStatusMessage("2/2 Policy passed (AUTO_APPROVE). Created PayPal Sandbox Order. Ready for buyer approval...");
         const orderRes = await fetch("/api/paypal/orders", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ runId })
         });
-        const orderData = await readJson<{ orderId?: string; status?: string; error?: string }>(orderRes);
+        const orderData = await readJson<{ orderId?: string; status?: string; approvalUrl?: string; error?: string }>(orderRes);
         if (!orderRes.ok || !orderData.orderId) {
           throw new Error(orderData.error ?? "PayPal order creation failed.");
         }
         paypalOrderId = orderData.orderId;
-        paypalStatus = orderData.status ?? "CREATED";
-
-        setRunnerStatusMessage("3/3 Capturing live PayPal Sandbox payment & recording SHA-256 ledger...");
-        const captureRes = await fetch("/api/paypal/capture", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ runId })
-        });
-        const captureData = await readJson<{ captureId?: string; status?: string; ledgerSequence?: number; error?: string }>(captureRes);
-        if (!captureRes.ok) {
-          throw new Error(captureData.error ?? "PayPal payment capture failed.");
-        }
-        paypalCaptureId = captureData.captureId ?? null;
-        paypalStatus = captureData.status ?? "COMPLETED";
-        ledgerSeq = captureData.ledgerSequence ?? null;
+        paypalStatus = orderData.status ?? "AWAITING_PAYPAL_APPROVAL";
+        paypalApprovalUrl = orderData.approvalUrl ?? null;
       } else if (decision === "ASK_HUMAN") {
         setRunnerStatusMessage("Purchase exceeds limits. Held for human review in Approval Inbox below.");
       } else if (decision === "BLOCK") {
@@ -248,6 +263,7 @@ export default function DashboardPage() {
         total,
         items,
         paypalOrderId,
+        paypalApprovalUrl,
         paypalCaptureId,
         paypalStatus,
         ledgerSequence: ledgerSeq,
@@ -262,6 +278,34 @@ export default function DashboardPage() {
     } finally {
       setRunningRunner(false);
       setRunnerStatusMessage(null);
+    }
+  };
+
+  // Manual Capture Trigger (if user completed approval in a separate tab)
+  const handleManualCapture = async (runId: string) => {
+    setCapturingOrder(true);
+    setRunnerError(null);
+    try {
+      const captureRes = await fetch("/api/paypal/capture", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ runId })
+      });
+      const captureData = await readJson<{ captureId?: string; status?: string; ledgerSequence?: number; error?: string }>(captureRes);
+      if (!captureRes.ok) {
+        throw new Error(captureData.error ?? "Capture failed. Has the buyer approved the order on PayPal?");
+      }
+      setLastRunResult((current) => current ? {
+        ...current,
+        paypalCaptureId: captureData.captureId ?? null,
+        paypalStatus: "PAID",
+        ledgerSequence: captureData.ledgerSequence ?? null
+      } : null);
+      await refreshDashboard();
+    } catch (err) {
+      setRunnerError(err instanceof Error ? err.message : "Capture failed.");
+    } finally {
+      setCapturingOrder(false);
     }
   };
 
@@ -283,26 +327,19 @@ export default function DashboardPage() {
       const data = await readJson<{ error?: string }>(res);
       if (!res.ok) throw new Error(data.error ?? "Failed to approve request.");
 
-      // 2. Automatically create & capture PayPal Sandbox Order for approved request
+      // 2. Create PayPal Sandbox Order for approved request (AWAITING_PAYPAL_APPROVAL)
       const orderRes = await fetch("/api/paypal/orders", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ runId })
       });
-      const orderData = await readJson<{ orderId?: string; error?: string }>(orderRes);
+      const orderData = await readJson<{ orderId?: string; status?: string; approvalUrl?: string; error?: string }>(orderRes);
       if (!orderRes.ok || !orderData.orderId) throw new Error(orderData.error ?? "Failed to create PayPal order.");
 
-      const captureRes = await fetch("/api/paypal/capture", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ runId })
-      });
-      const captureData = await readJson<{ captureId?: string; status?: string; error?: string }>(captureRes);
-      if (!captureRes.ok) throw new Error(captureData.error ?? "Failed to capture PayPal payment.");
-
       setApprovalMessage({
-        text: `✓ Request approved! PayPal Sandbox Order ${orderData.orderId} captured successfully (Capture ID: ${captureData.captureId ?? "captured"}).`,
-        type: "success"
+        text: `✓ Request approved! PayPal Sandbox Order ${orderData.orderId} created (${orderData.status ?? "AWAITING_PAYPAL_APPROVAL"}).`,
+        type: "success",
+        approvalUrl: orderData.approvalUrl
       });
       await refreshDashboard();
     } catch (err) {
@@ -423,6 +460,29 @@ export default function DashboardPage() {
         }
       />
 
+      {/* Return & Capture Status Notification Banner */}
+      {paypalBanner && (
+        <div
+          className={`p-4 rounded-lg border flex items-center justify-between text-xs font-medium shadow-md ${
+            paypalBanner.type === "success"
+              ? "border-success/40 bg-success/15 text-success"
+              : "border-error/40 bg-error/15 text-error"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold">{paypalBanner.type === "success" ? "✓" : "✕"}</span>
+            <span>{paypalBanner.message}</span>
+          </div>
+          <button
+            onClick={() => setPaypalBanner(null)}
+            className="text-text-muted hover:text-text-primary font-bold ml-3 cursor-pointer"
+            aria-label="Dismiss banner"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* System Status Badges */}
       <section className="content-section">
         <div className="flex flex-wrap gap-4 items-center">
@@ -469,7 +529,7 @@ export default function DashboardPage() {
               </h2>
             </div>
             <p className="text-xs sm:text-sm text-text-secondary mt-1">
-              Dispatch autonomous agent purchases governed by your active mandate. Experience real-time policy evaluation, live PayPal Sandbox order creation and payment capture, and SHA-256 ledger verification.
+              Dispatch autonomous agent purchases governed by your active mandate. Creates orders in PayPal Sandbox, requests buyer authorization, captures settlement upon return, and chains SHA-256 ledger proofs.
             </p>
           </div>
 
@@ -547,7 +607,7 @@ export default function DashboardPage() {
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-success/20 text-success font-semibold">Auto-Approve</span>
               </div>
               <p className="text-xs text-text-secondary">
-                Paper ($18.99) + Coffee ($14.50). Evaluates rules, automatically creates & captures <strong>live PayPal Sandbox payment</strong>!
+                Paper ($18.99) + Coffee ($14.50). Evaluates all 13 rules, generates PayPal Sandbox Order, and provides one-click approval link!
               </p>
             </button>
 
@@ -562,7 +622,7 @@ export default function DashboardPage() {
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/20 text-warning font-semibold">Ask Human</span>
               </div>
               <p className="text-xs text-text-secondary">
-                Coffee x4 + Paper. Triggers Rule R07. Routes to Approval Inbox below for 1-click human PayPal approval!
+                Coffee x4 + Paper. Triggers Rule R07. Routes to Approval Inbox below for human review and PayPal checkout!
               </p>
             </button>
 
@@ -634,20 +694,59 @@ export default function DashboardPage() {
               <div className="flex items-center gap-2">
                 <StatusBadge status={lastRunResult.decision as any} size="sm" />
                 {lastRunResult.paypalStatus && (
-                  <span className="px-2 py-0.5 text-xs rounded-full font-semibold bg-primary/20 text-primary border border-primary/30">
-                    PayPal: {lastRunResult.paypalStatus}
-                  </span>
+                  <StatusBadge status={lastRunResult.paypalStatus as any} size="sm" />
                 )}
               </div>
             </div>
 
-            {/* PayPal Sandbox Details Highlight */}
-            {lastRunResult.decision === "AUTO_APPROVE" && lastRunResult.paypalOrderId && (
+            {/* Awaiting Buyer PayPal Approval State */}
+            {lastRunResult.paypalOrderId && lastRunResult.paypalStatus === "AWAITING_PAYPAL_APPROVAL" && (
+              <div className="p-4 rounded-lg border border-warning/40 bg-warning/10 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-base text-warning">🟡</span>
+                      <p className="text-sm font-bold text-text-primary">
+                        PayPal Sandbox Order Created — Awaiting Buyer Approval
+                      </p>
+                    </div>
+                    <p className="text-xs text-text-secondary mt-1">
+                      Order ID <strong className="font-mono text-text-primary">{lastRunResult.paypalOrderId}</strong> created in PayPal Sandbox.
+                      Click the button below to authorize the sandbox purchase in PayPal. Upon return, the payment will be automatically captured and anchored to the ledger.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  {lastRunResult.paypalApprovalUrl && (
+                    <a
+                      href={lastRunResult.paypalApprovalUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary hover:bg-primary-hover text-primary-text font-bold text-xs shadow-md transition"
+                    >
+                      <span>👉 Approve on PayPal Sandbox →</span>
+                    </a>
+                  )}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleManualCapture(lastRunResult.runId)}
+                    disabled={capturingOrder}
+                  >
+                    {capturingOrder ? "Capturing..." : "⚡ Capture After Approval"}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Captured / Paid State */}
+            {lastRunResult.paypalOrderId && (lastRunResult.paypalStatus === "PAID" || lastRunResult.paypalStatus === "COMPLETED") && (
               <div className="p-3.5 rounded-lg border border-success/40 bg-success/10 space-y-2">
                 <div className="flex items-center gap-2">
                   <span className="text-base text-success font-bold">✓</span>
                   <p className="text-sm font-bold text-success">
-                    PayPal Sandbox Payment Captured Successfully!
+                    PayPal Sandbox Payment Captured & Marked as PAID!
                   </p>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
@@ -817,7 +916,7 @@ export default function DashboardPage() {
           <div>
             <h2 className="text-lg font-semibold text-text-primary">Approval Inbox</h2>
             <p className="text-xs text-text-secondary mt-0.5">
-              Review held purchase requests. Approving automatically creates & captures a live PayPal Sandbox payment.
+              Review held purchase requests. Approving creates a PayPal Sandbox order awaiting buyer authorization.
             </p>
           </div>
           <Link href="/approvals" className="text-sm text-primary hover:text-primary-hover focus-visible-outline">
@@ -827,13 +926,23 @@ export default function DashboardPage() {
 
         {approvalMessage && (
           <div
-            className={`mb-4 p-3 rounded-lg border text-xs ${
+            className={`mb-4 p-4 rounded-lg border text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm ${
               approvalMessage.type === "success"
                 ? "border-success/40 bg-success/10 text-success"
                 : "border-error/40 bg-error/10 text-error"
             }`}
           >
-            {approvalMessage.text}
+            <span>{approvalMessage.text}</span>
+            {approvalMessage.approvalUrl && (
+              <a
+                href={approvalMessage.approvalUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary hover:bg-primary-hover text-primary-text font-bold text-xs shadow transition whitespace-nowrap"
+              >
+                👉 Approve on PayPal Sandbox →
+              </a>
+            )}
           </div>
         )}
 
@@ -866,7 +975,7 @@ export default function DashboardPage() {
                       disabled={processingApprovalId === approval.id}
                       onClick={() => handleApprove(approval.id, approval.run_id)}
                     >
-                      {processingApprovalId === approval.id ? "Approving & Paying PayPal..." : "✓ Approve & Pay via PayPal"}
+                      {processingApprovalId === approval.id ? "Creating Order..." : "✓ Approve & Create PayPal Order"}
                     </Button>
                     <Button
                       variant="danger"

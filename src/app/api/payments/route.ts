@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   try {
     const orders = await listPaymentOrdersForOwner(owner);
     const payments = orders
-      .filter((o) => o.status === "COMPLETED")
+      .filter((o) => o.status === "COMPLETED" || o.status === "PAID")
       .map((o) => ({
         orderId: o.id,
         runId: o.run_id,

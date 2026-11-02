@@ -75,11 +75,11 @@ export async function POST(request: Request) {
       id: order.id,
       runId: value.runId,
       amount,
-      status: order.status,
+      status: "AWAITING_PAYPAL_APPROVAL",
       cartHash: computedCartHash,
       approvalUrl
     });
-    return NextResponse.json({ orderId: order.id, status: order.status, approvalUrl });
+    return NextResponse.json({ orderId: order.id, status: "AWAITING_PAYPAL_APPROVAL", approvalUrl });
   } catch (error) {
     const message = error instanceof Error ? error.message : "PayPal order creation failed.";
     const status = message === "MANDATE_REVOKED" || message === "PAYMENT_BLOCKED"

@@ -20,7 +20,9 @@ const statusColors: Record<string, { bg: string; text: string; border: string }>
   EXPIRED: { bg: "#1c2438", text: "#8b9cff", border: "#293252" },
   COMPLETED: { bg: "#173b35", text: "#6ee7b7", border: "#1e5a52" },
   FAILED: { bg: "#2a151b", text: "#ff7b8b", border: "#5a2a2d" },
-  REFUNDED: { bg: "#173b35", text: "#8b9cff", border: "#2e4a7a" }
+  REFUNDED: { bg: "#173b35", text: "#8b9cff", border: "#2e4a7a" },
+  PAID: { bg: "#173b35", text: "#6ee7b7", border: "#1e5a52" },
+  AWAITING_PAYPAL_APPROVAL: { bg: "#2a2015", text: "#f0c674", border: "#5a4a1d" }
 };
 
 export function StatusBadge({ status, size = "sm" }: { status?: string | null; size?: "sm" | "md" }) {

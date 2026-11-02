@@ -252,7 +252,7 @@ export async function getRunContext(runId: string) {
     `SELECT r.id, r.mandate_id, r.decision, r.cart, m.status AS mandate_status, m.definition AS mandate,
             a.id AS approval_id, a.status AS approval_status, a.expires_at AS approval_expires_at,
             o.id AS order_id, o.status AS order_status, o.capture_id, o.cart_hash,
-            o.tracking_carrier, o.tracking_number, o.tracking_status
+            o.approval_url, o.tracking_carrier, o.tracking_number, o.tracking_status
      FROM runs r
      JOIN mandates m ON m.id = r.mandate_id
      LEFT JOIN LATERAL (
@@ -261,6 +261,24 @@ export async function getRunContext(runId: string) {
      LEFT JOIN payment_orders o ON o.run_id = r.id
      WHERE r.id = $1`,
     [runId]
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function getRunContextByOrderId(orderId: string) {
+  const result = await getDatabasePool().query(
+    `SELECT r.id, r.mandate_id, r.decision, r.cart, m.status AS mandate_status, m.definition AS mandate,
+            a.id AS approval_id, a.status AS approval_status, a.expires_at AS approval_expires_at,
+            o.id AS order_id, o.status AS order_status, o.capture_id, o.cart_hash,
+            o.approval_url, o.tracking_carrier, o.tracking_number, o.tracking_status
+     FROM payment_orders o
+     JOIN runs r ON r.id = o.run_id
+     JOIN mandates m ON m.id = r.mandate_id
+     LEFT JOIN LATERAL (
+       SELECT * FROM approvals WHERE run_id = r.id ORDER BY created_at DESC LIMIT 1
+     ) a ON true
+     WHERE o.id = $1`,
+    [orderId]
   );
   return result.rows[0] ?? null;
 }
@@ -321,7 +339,7 @@ export async function persistPaymentOrder(input: {
 
 export async function markOrderCaptured(runId: string, captureId: string | null, amount: number) {
   await getDatabasePool().query(
-    "UPDATE payment_orders SET status = 'COMPLETED', capture_id = $2, updated_at = now() WHERE run_id = $1",
+    "UPDATE payment_orders SET status = 'PAID', capture_id = $2, updated_at = now() WHERE run_id = $1",
     [runId, captureId]
   );
   const context = await getRunContext(runId);
