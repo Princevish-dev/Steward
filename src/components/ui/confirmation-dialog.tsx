@@ -45,13 +45,13 @@ export function ConfirmationDialog({
         <div className="flex gap-2">
           <button
             onClick={onCancel}
-            className="flex-1 rounded-md border border-border bg-surface text-text-secondary py-2 text-sm font-medium hover:bg-surface-focus focus-visible-outline"
+            className="flex-1 rounded-md border border-border bg-surface text-text-secondary py-2 text-sm font-medium hover:bg-surface-focus focus-visible-outline cursor-pointer"
           >
             {cancelLabel}
           </button>
           <button
             onClick={onConfirm}
-            className={`flex-1 rounded-md px-4 py-2 text-sm font-medium focus-visible-outline ${
+            className={`flex-1 rounded-md px-4 py-2 text-sm font-medium focus-visible-outline cursor-pointer ${
               confirmVariant === "danger" ? "bg-error text-error-bg hover:bg-error" : "bg-primary text-primary-text hover:bg-primary-hover"
             }`}
           >

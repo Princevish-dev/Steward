@@ -114,18 +114,20 @@ export default function NewMandatePage() {
     setDraft((prev) => ({ ...prev, [field]: value } as MandateDraft));
   }, [draft]);
 
-  const confirmMandate = async () => {
+  const confirmMandate = () => {
     if (!draft) return;
+    setError(null);
     setShowConfirmDialog(true);
+    setStep("confirm");
   };
 
   const executeConfirm = async () => {
     if (!draft) return;
     setLoading(true);
-    setShowConfirmDialog(false);
+    setError(null);
     try {
       const basePurpose = draft.purpose.split("; max $")[0];
-      const intent = `${basePurpose}; max $${draft.period.budget} a month; nothing over $${draft.caps.perItem ?? 0}; ask me above $${draft.askAbove ?? 0}`;
+      const intent = `${basePurpose}; max ${draft.period.budget} a month; nothing over ${draft.caps.perItem ?? 0}; ask me above ${draft.askAbove ?? 0}`;
       const createResponse = await fetch("/api/mandates", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -153,11 +155,14 @@ export default function NewMandatePage() {
       if (!response.ok || !result.mandate) {
         throw new Error(result.error ?? "Could not activate mandate.");
       }
+      setShowConfirmDialog(false);
       setDraft(result.mandate);
       setMessage("Mandate is ACTIVE and ready for governed runs.");
       setStep("success");
     } catch (err) {
+      setShowConfirmDialog(false);
       setError(err instanceof Error ? err.message : "Could not activate mandate.");
+      setStep("confirm");
     } finally {
       setLoading(false);
     }
@@ -390,15 +395,50 @@ export default function NewMandatePage() {
         )}
 
         {step === "confirm" && draft && (
-          <ConfirmationDialog
-            isOpen
-            title="Activate Mandate"
-            description={`Confirming will activate mandate "${draft.purpose}" with the spending limits shown above. Once active, your agent can make purchases within these boundaries.`}
-            confirmLabel="Activate Mandate"
-            confirmVariant="success"
-            onConfirm={executeConfirm}
-            onCancel={() => setStep("review")}
-          />
+          <div className="space-y-6">
+            <div className="bg-surface-elevated rounded-lg p-6 border border-border">
+              <h4 className="text-base font-semibold text-text-primary mb-2">Final Confirmation & Activation</h4>
+              <p className="text-sm text-text-secondary mb-6">
+                You are activating mandate &quot;<strong className="text-text-primary">{draft.purpose}</strong>&quot;.
+                Once confirmed, these spending caps will be cryptographically anchored to the SHA-256 audit ledger.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                <div className="p-4 rounded-md border border-border bg-surface">
+                  <p className="text-xs text-text-secondary">Per-Item Limit</p>
+                  <p className="text-xl font-bold text-text-primary mt-1">${draft.caps.perItem ?? 0}</p>
+                  <p className="text-xs text-text-muted mt-1">Rule R04 hard block</p>
+                </div>
+                <div className="p-4 rounded-md border border-border bg-surface">
+                  <p className="text-xs text-text-secondary">Approval Threshold</p>
+                  <p className="text-xl font-bold text-text-primary mt-1">${draft.askAbove ?? 0}</p>
+                  <p className="text-xs text-text-muted mt-1">Rule R06 human review</p>
+                </div>
+                <div className="p-4 rounded-md border border-border bg-surface">
+                  <p className="text-xs text-text-secondary">Monthly Budget</p>
+                  <p className="text-xl font-bold text-text-primary mt-1">${draft.period.budget}</p>
+                  <p className="text-xs text-text-muted mt-1">Rule R05 period cap</p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <Button variant="secondary" onClick={() => setStep("risk")}>
+                  ← Back to Risk Review
+                </Button>
+                <Button variant="primary" onClick={executeConfirm} disabled={loading}>
+                  {loading ? "Activating Mandate..." : "✓ Confirm & Activate Mandate"}
+                </Button>
+              </div>
+            </div>
+
+            <ConfirmationDialog
+              isOpen={showConfirmDialog}
+              title="Activate Mandate"
+              description={`Confirming will activate mandate "${draft.purpose}" with the spending limits shown above. Once active, your agent can make purchases within these boundaries.`}
+              confirmLabel={loading ? "Activating..." : "Activate Mandate"}
+              confirmVariant="success"
+              onConfirm={executeConfirm}
+              onCancel={() => setShowConfirmDialog(false)}
+            />
+          </div>
         )}
 
         {step === "success" && draft && (

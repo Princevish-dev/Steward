@@ -47,7 +47,7 @@ export function Button({
     onClick?.();
   };
 
-  const baseClass = `inline-flex items-center justify-center gap-2 rounded-md font-semibold transition-all duration-200 ${variantStyles[variant]} ${sizeStyles[size]} ${className}`;
+  const baseClass = `inline-flex items-center justify-center gap-2 rounded-md font-semibold transition-all duration-200 cursor-pointer ${variantStyles[variant]} ${sizeStyles[size]} ${className}`;
 
   if (asChild || href) {
     return (
