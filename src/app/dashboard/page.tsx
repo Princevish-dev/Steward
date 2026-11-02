@@ -48,6 +48,21 @@ function cleanPurposeText(purpose: string): string {
   return title || purpose.replace(/^["']|["']$/g, "").trim();
 }
 
+function getSuggestedTaskForMandate(mandate: MandateRow | null): string {
+  if (!mandate) return "Order A4 printer paper and office stationery for the team";
+  const purposeLower = mandate.purpose.toLowerCase();
+  if (purposeLower.includes("coffee") && purposeLower.includes("paper")) {
+    return "Order 2 packs of A4 printer paper and medium roast coffee beans";
+  }
+  if (purposeLower.includes("coffee")) {
+    return "Order 3 bags of medium roast coffee beans";
+  }
+  if (purposeLower.includes("stationery") || purposeLower.includes("office") || purposeLower.includes("team")) {
+    return "Order 2 packs of A4 printer paper and stationery supplies for the team";
+  }
+  return `Order items for: ${cleanPurposeText(mandate.purpose)}`;
+}
+
 type RunRow = {
   run_id: string;
   mandate_id: string;
@@ -193,6 +208,13 @@ export default function DashboardPage() {
   useEffect(() => {
     void refreshDashboard();
   }, [refreshDashboard]);
+
+  useEffect(() => {
+    const mandate = mandates.find((m) => m.id === mandateId);
+    if (mandate) {
+      setTaskPrompt(getSuggestedTaskForMandate(mandate));
+    }
+  }, [mandateId, mandates]);
 
   // Execute Agent Shopping Run (Two-Step Creation with Approval Link)
   const executeAgentRun = async (scenario?: "within" | "ask" | "over-cap", customTask?: string) => {
@@ -890,57 +912,76 @@ export default function DashboardPage() {
         </div>
 
         {/* 1-Click Simulation Scenarios */}
-        <div className="mb-6">
-          <label className="block text-xs font-semibold uppercase tracking-wider text-text-secondary mb-2">
-            1-Click Test Scenarios (Instant Policy & PayPal Proof)
-          </label>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <button
-              type="button"
-              disabled={runningRunner || !mandateId}
-              onClick={() => executeAgentRun("within", "A4 printer paper and medium roast coffee beans")}
-              className="p-3.5 rounded-lg border border-success/40 bg-success/10 hover:bg-success/20 transition text-left cursor-pointer disabled:opacity-50"
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-bold text-success">🟢 Scenario 1: Within Limits ($33.49)</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-success/20 text-success font-semibold">Auto-Approve</span>
-              </div>
-              <p className="text-xs text-text-secondary">
-                Paper ($18.99) + Coffee ($14.50). Evaluates all 13 rules, generates PayPal Sandbox Order, and provides one-click approval link!
-              </p>
-            </button>
+        {(() => {
+          const isCoffeeAllowed = Boolean(selectedMandate?.categories?.includes("coffee_tea"));
+          const scenario1Task = isCoffeeAllowed
+            ? "A4 printer paper and medium roast coffee beans"
+            : "A4 printer paper for the team";
+          const scenario1Label = isCoffeeAllowed ? "Within Limits ($33.49)" : "Within Limits ($18.99)";
+          const scenario1Desc = isCoffeeAllowed
+            ? "Paper ($18.99) + Coffee ($14.50). Evaluates all 13 rules, within limits, generates PayPal Sandbox order!"
+            : "Paper ($18.99). Evaluates all 13 rules, within team stationery limits, generates PayPal Sandbox order!";
 
-            <button
-              type="button"
-              disabled={runningRunner || !mandateId}
-              onClick={() => executeAgentRun("ask", "Paper and coffee with premium coffee bulk order above threshold")}
-              className="p-3.5 rounded-lg border border-warning/40 bg-warning/10 hover:bg-warning/20 transition text-left cursor-pointer disabled:opacity-50"
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-bold text-warning">🟡 Scenario 2: Above Threshold ($76.99)</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/20 text-warning font-semibold">Ask Human</span>
-              </div>
-              <p className="text-xs text-text-secondary">
-                Coffee x4 + Paper. Triggers Rule R07. Routes to Approval Inbox below for human review and PayPal checkout!
-              </p>
-            </button>
+          const scenario2Task = isCoffeeAllowed
+            ? "Paper and coffee with premium coffee bulk order above threshold"
+            : "A4 printer paper bulk order exceeding threshold";
+          const scenario2Label = `Above Threshold (Ask >$${selectedMandate?.askAbove ?? 60})`;
+          const scenario2Desc = `Bulk order exceeding ask threshold. Triggers Rule R07, routing to Approval Inbox for human sign-off!`;
 
-            <button
-              type="button"
-              disabled={runningRunner || !mandateId}
-              onClick={() => executeAgentRun("over-cap", "Bulk designer furniture exceeding item cap")}
-              className="p-3.5 rounded-lg border border-error/40 bg-error/10 hover:bg-error/20 transition text-left cursor-pointer disabled:opacity-50"
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-bold text-error">🔴 Scenario 3: Hard Cap Violation ($300.00)</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-error/20 text-error font-semibold">Block ($0)</span>
+          return (
+            <div className="mb-6">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-text-secondary mb-2">
+                1-Click Test Scenarios (Instant Policy & PayPal Proof)
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <button
+                  type="button"
+                  disabled={runningRunner || !mandateId}
+                  onClick={() => executeAgentRun("within", scenario1Task)}
+                  className="p-3.5 rounded-lg border border-success/40 bg-success/10 hover:bg-success/20 transition text-left cursor-pointer disabled:opacity-50"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-success">🟢 Scenario 1: {scenario1Label}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-success/20 text-success font-semibold">Auto-Approve</span>
+                  </div>
+                  <p className="text-xs text-text-secondary">
+                    {scenario1Desc}
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={runningRunner || !mandateId}
+                  onClick={() => executeAgentRun("ask", scenario2Task)}
+                  className="p-3.5 rounded-lg border border-warning/40 bg-warning/10 hover:bg-warning/20 transition text-left cursor-pointer disabled:opacity-50"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-warning">🟡 Scenario 2: {scenario2Label}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/20 text-warning font-semibold">Ask Human</span>
+                  </div>
+                  <p className="text-xs text-text-secondary">
+                    {scenario2Desc}
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={runningRunner || !mandateId}
+                  onClick={() => executeAgentRun("over-cap", "Bulk designer furniture exceeding item cap")}
+                  className="p-3.5 rounded-lg border border-error/40 bg-error/10 hover:bg-error/20 transition text-left cursor-pointer disabled:opacity-50"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-error">🔴 Scenario 3: Hard Cap Violation ($300.00)</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-error/20 text-error font-semibold">Block ($0)</span>
+                  </div>
+                  <p className="text-xs text-text-secondary">
+                    Violates Rule R04 per-item cap. Hard blocked by deterministic engine. <strong>$0.00 charged</strong>.
+                  </p>
+                </button>
               </div>
-              <p className="text-xs text-text-secondary">
-                Violates Rule R04 per-item cap. Hard blocked by deterministic engine. <strong>$0.00 charged</strong>.
-              </p>
-            </button>
-          </div>
-        </div>
+            </div>
+          );
+        })()}
 
         {/* Custom Purchasing Intent Input */}
         <div className="space-y-2">
@@ -953,7 +994,7 @@ export default function DashboardPage() {
               aria-label="Custom Purchasing Intent"
               value={taskPrompt}
               onChange={(e) => setTaskPrompt(e.target.value)}
-              placeholder="e.g. Order 2 packs of A4 printer paper and medium roast coffee"
+              placeholder={getSuggestedTaskForMandate(selectedMandate)}
               className="flex-1 rounded-md border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-primary focus:outline-none"
               disabled={runningRunner}
             />

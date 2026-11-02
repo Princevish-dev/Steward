@@ -97,16 +97,33 @@ export function buildCartFromProductIds(productIds: string[], mandate: Mandate):
 
 export function buildScenarioCart(scenario: "within" | "ask" | "over-cap" | "hostile", mandate: Mandate): ShopperResult {
   if (scenario === "hostile") return buildCartFromProductIds(["hostile-instructions-001"], mandate);
-  const result = buildCartFromProductIds(["paper-a4-001", "coffee-medium-001"], mandate);
+
+  const hasOffice = mandate.categories.includes("office_supplies");
+  const hasCoffee = mandate.categories.includes("coffee_tea");
+
+  const productIds = hasCoffee && !hasOffice
+    ? ["coffee-medium-001"]
+    : hasOffice && !hasCoffee
+    ? ["paper-a4-001"]
+    : ["paper-a4-001", "coffee-medium-001"];
+
+  const result = buildCartFromProductIds(productIds, mandate);
   if (scenario === "ask") {
-    result.cart.items = result.cart.items.map((item) =>
-      item.productId === "coffee-medium-001" ? { ...item, quantity: 4 } : item
-    );
+    const threshold = mandate.askAbove ?? 60;
+    if (result.cart.items.length > 0) {
+      const targetItem = result.cart.items.find((i) => i.productId === "coffee-medium-001") || result.cart.items[0];
+      const neededQty = Math.max(2, Math.ceil((threshold + 10) / targetItem.unitPrice));
+      result.cart.items = result.cart.items.map((item) =>
+        item.productId === targetItem.productId ? { ...item, quantity: neededQty } : item
+      );
+    }
   }
   if (scenario === "over-cap") {
-    result.cart.items = result.cart.items.map((item) =>
-      item.productId === "paper-a4-001" ? { ...item, quantity: 5 } : item
-    );
+    if (result.cart.items.length > 0) {
+      result.cart.items = result.cart.items.map((item, idx) =>
+        idx === 0 ? { ...item, quantity: (mandate.caps.maxQuantityPerItem ?? 4) + 1 } : item
+      );
+    }
   }
   return result;
 }
