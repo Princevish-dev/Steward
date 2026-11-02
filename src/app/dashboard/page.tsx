@@ -38,7 +38,15 @@ type MandateRow = {
   askAbove: number | null;
   categories: string[];
   expiresAt: string;
+  totalSpent?: number;
+  runsCount?: number;
 };
+
+function cleanPurposeText(purpose: string): string {
+  if (!purpose) return "General Purchases";
+  const title = purpose.split(/[.,;]\s*(?:maximum|max)\s/i)[0].replace(/^["']|["']$/g, "").trim();
+  return title || purpose.replace(/^["']|["']$/g, "").trim();
+}
 
 type RunRow = {
   run_id: string;
@@ -152,9 +160,11 @@ export default function DashboardPage() {
       setLedgerEntries(ledgerResp.entries ?? []);
       setLedgerValid(ledgerResp.verification?.valid ?? null);
 
-      // Default active mandate selection if not set
+      // Default active mandate selection if not set (preferring one with available budget)
       setMandateId((current) => {
         if (current && fetchedMandates.some((m) => m.id === current)) return current;
+        const availableActive = fetchedMandates.find((m) => m.status === "ACTIVE" && (m.totalSpent || 0) < m.period.budget);
+        if (availableActive) return availableActive.id;
         const active = fetchedMandates.find((m) => m.status === "ACTIVE");
         return active ? active.id : fetchedMandates[0]?.id ?? null;
       });
@@ -188,6 +198,12 @@ export default function DashboardPage() {
   const executeAgentRun = async (scenario?: "within" | "ask" | "over-cap", customTask?: string) => {
     if (!mandateId) {
       setRunnerError("Please select an active mandate first or create one.");
+      return;
+    }
+
+    const currentMandate = mandates.find((m) => m.id === mandateId);
+    if (currentMandate && currentMandate.status === "ACTIVE" && (currentMandate.totalSpent || 0) >= currentMandate.period.budget) {
+      setRunnerError(`This mandate's monthly budget is fully spent ($${currentMandate.totalSpent?.toFixed(2)} / $${currentMandate.period.budget}). All purchases under it have already been completed. Please select another active mandate with available budget.`);
       return;
     }
 
@@ -399,6 +415,27 @@ export default function DashboardPage() {
     }
   };
 
+  // Revoke/Archive Mandate Handler
+  const [revokingMandateId, setRevokingMandateId] = useState<string | null>(null);
+  const handleRevokeMandate = async (id: string) => {
+    if (!window.confirm("Are you sure you want to archive/revoke this mandate? The AI Shopper will no longer make purchases under it.")) {
+      return;
+    }
+    setRevokingMandateId(id);
+    try {
+      const res = await fetch(`/api/mandates/${id}/revoke`, { method: "POST" });
+      if (!res.ok) {
+        const err = await readJson<{ error?: string }>(res);
+        throw new Error(err.error ?? "Failed to revoke mandate.");
+      }
+      await refreshDashboard();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to revoke mandate.");
+    } finally {
+      setRevokingMandateId(null);
+    }
+  };
+
   const selectedMandate = mandates.find((m) => m.id === mandateId) || mandates[0] || null;
 
   if (loading && mandates.length === 0) {
@@ -561,30 +598,111 @@ export default function DashboardPage() {
                 onChange={(e) => setMandateId(e.target.value)}
                 className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-primary focus:outline-none"
               >
-                {mandates.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.purpose} — Budget: ${m.period.budget} | Cap: ${m.caps.perItem ?? "No cap"} | Ask: ${m.askAbove ?? "None"} ({m.status})
-                  </option>
-                ))}
+                {(() => {
+                  const activeAvailable = mandates.filter((m) => m.status === "ACTIVE" && (m.totalSpent || 0) < m.period.budget);
+                  const completedOrExhausted = mandates.filter((m) => m.status === "ACTIVE" && (m.totalSpent || 0) >= m.period.budget);
+                  const revoked = mandates.filter((m) => m.status === "REVOKED");
+
+                  const renderOption = (m: MandateRow, isCompleted = false) => {
+                    const cleanTitle = cleanPurposeText(m.purpose);
+                    const spent = m.totalSpent || 0;
+                    const remaining = Math.max(0, m.period.budget - spent);
+                    let statusLabel = "";
+                    if (m.status === "REVOKED") {
+                      statusLabel = "[ARCHIVED / REVOKED]";
+                    } else if (isCompleted || spent >= m.period.budget) {
+                      statusLabel = `[✓ COMPLETED & PAID — $${spent.toFixed(2)} / $${m.period.budget}]`;
+                    } else if (spent > 0) {
+                      statusLabel = `[Spent: $${spent.toFixed(2)} | Remaining: $${remaining.toFixed(2)}]`;
+                    } else {
+                      statusLabel = `[Budget: $${m.period.budget.toFixed(2)} Available]`;
+                    }
+                    const thresholdLabel = m.askAbove ? `(Ask >$${m.askAbove})` : "";
+                    return (
+                      <option key={m.id} value={m.id}>
+                        {cleanTitle} — {statusLabel} {thresholdLabel}
+                      </option>
+                    );
+                  };
+
+                  return (
+                    <>
+                      {activeAvailable.length > 0 && (
+                        <optgroup label="🟢 Active Mandates (Available Spending Budget)">
+                          {activeAvailable.map((m) => renderOption(m, false))}
+                        </optgroup>
+                      )}
+                      {completedOrExhausted.length > 0 && (
+                        <optgroup label="✅ Completed / Budget Exhausted (Purchases Already Done)">
+                          {completedOrExhausted.map((m) => renderOption(m, true))}
+                        </optgroup>
+                      )}
+                      {revoked.length > 0 && (
+                        <optgroup label="⛔ Archived / Revoked Mandates">
+                          {revoked.map((m) => renderOption(m, false))}
+                        </optgroup>
+                      )}
+                    </>
+                  );
+                })()}
               </select>
             )}
           </div>
 
           {selectedMandate && (
-            <div className="p-3 rounded-lg border border-border bg-surface flex items-center justify-around text-center">
-              <div>
-                <p className="text-[11px] text-text-muted">Item Cap</p>
-                <p className="text-sm font-bold text-text-primary">${selectedMandate.caps.perItem ?? "∞"}</p>
+            <div className="p-3.5 rounded-lg border border-border bg-surface space-y-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                <div className="p-2 rounded bg-surface-elevated border border-border/50">
+                  <p className="text-[10px] uppercase font-bold text-text-muted">Item Cap</p>
+                  <p className="text-sm font-bold text-text-primary">${selectedMandate.caps.perItem ?? "∞"}</p>
+                </div>
+                <div className="p-2 rounded bg-surface-elevated border border-border/50">
+                  <p className="text-[10px] uppercase font-bold text-text-muted">Ask Threshold</p>
+                  <p className="text-sm font-bold text-warning">{selectedMandate.askAbove ? `>$${selectedMandate.askAbove}` : "None"}</p>
+                </div>
+                <div className="p-2 rounded bg-surface-elevated border border-border/50">
+                  <p className="text-[10px] uppercase font-bold text-text-muted">Monthly Budget</p>
+                  <p className="text-sm font-bold text-text-primary">${selectedMandate.period.budget}</p>
+                </div>
+                <div className="p-2 rounded bg-surface-elevated border border-border/50">
+                  <p className="text-[10px] uppercase font-bold text-text-muted">Spent / Remaining</p>
+                  <p className="text-sm font-bold text-success">
+                    ${(selectedMandate.totalSpent || 0).toFixed(2)} / ${Math.max(0, selectedMandate.period.budget - (selectedMandate.totalSpent || 0)).toFixed(2)}
+                  </p>
+                </div>
               </div>
-              <div className="h-8 w-px bg-border" />
-              <div>
-                <p className="text-[11px] text-text-muted">Approval Ask</p>
-                <p className="text-sm font-bold text-warning">${selectedMandate.askAbove ?? "None"}</p>
-              </div>
-              <div className="h-8 w-px bg-border" />
-              <div>
-                <p className="text-[11px] text-text-muted">Monthly Budget</p>
-                <p className="text-sm font-bold text-success">${selectedMandate.period.budget}</p>
+
+              {/* Purchase History / Completed Notification */}
+              {(selectedMandate.totalSpent || 0) > 0 && (
+                <div className="p-2 rounded-md border border-success/30 bg-success/10 text-xs text-success flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <span>✓</span>
+                    <span>
+                      {selectedMandate.runsCount || 1} purchase(s) already approved & completed under this mandate (
+                      <strong>${selectedMandate.totalSpent?.toFixed(2)}</strong> paid via PayPal).
+                    </span>
+                  </span>
+                  <span className="font-semibold px-2 py-0.5 rounded bg-success/20 text-[10px]">
+                    {(selectedMandate.totalSpent || 0) >= selectedMandate.period.budget ? "FULFILLED" : "ACTIVE"}
+                  </span>
+                </div>
+              )}
+
+              {/* Mandate Actions (Archive / Revoke) */}
+              <div className="flex items-center justify-between pt-1 border-t border-border/50 text-xs">
+                <span className="text-text-muted font-mono text-[10px]">{selectedMandate.id}</span>
+                {selectedMandate.status === "ACTIVE" ? (
+                  <button
+                    type="button"
+                    onClick={() => handleRevokeMandate(selectedMandate.id)}
+                    disabled={revokingMandateId === selectedMandate.id}
+                    className="text-text-muted hover:text-error text-xs font-medium underline transition cursor-pointer"
+                  >
+                    {revokingMandateId === selectedMandate.id ? "Archiving..." : "Archive / Revoke Duplicate"}
+                  </button>
+                ) : (
+                  <span className="text-error font-semibold text-xs">Archived / Revoked</span>
+                )}
               </div>
             </div>
           )}

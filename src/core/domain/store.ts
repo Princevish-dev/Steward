@@ -48,14 +48,51 @@ export async function getMandate(id: string): Promise<Mandate | null> {
   return result.rows[0]?.definition as Mandate | null;
 }
 
-export async function listMandatesForOwner(owner: string): Promise<Array<{ id: string; owner: string; purpose: string; status: string; period: { type: string; budget: number }; caps: { perItem: number | null; perTransaction: number | null; maxQuantityPerItem: number }; askAbove: number | null; categories: string[]; expiresAt: string }>> {
+export async function listMandatesForOwner(owner: string): Promise<Array<{
+  id: string;
+  owner: string;
+  purpose: string;
+  status: string;
+  period: { type: string; budget: number };
+  caps: { perItem: number | null; perTransaction: number | null; maxQuantityPerItem: number };
+  askAbove: number | null;
+  categories: string[];
+  expiresAt: string;
+  totalSpent?: number;
+  runsCount?: number;
+}>> {
   await ensureDatabaseMigrated();
   const result = await queryWithFallback(
-    `SELECT definition FROM mandates WHERE owner = $1 OR user_id = $1 ORDER BY created_at ASC`,
-    `SELECT definition FROM mandates WHERE owner = $1 ORDER BY created_at ASC`,
+    `SELECT m.definition, m.status,
+            COALESCE(SUM(
+              CASE WHEN po.status = 'PAID' OR po.status = 'COMPLETED' THEN po.amount ELSE 0 END
+            ), 0) AS total_spent,
+            COUNT(DISTINCT r.id) AS runs_count
+     FROM mandates m
+     LEFT JOIN runs r ON r.mandate_id = m.id
+     LEFT JOIN payment_orders po ON po.run_id = r.id
+     WHERE m.owner = $1 OR m.user_id = $1
+     GROUP BY m.id, m.definition, m.status, m.created_at
+     ORDER BY m.created_at ASC`,
+    `SELECT m.definition, m.status,
+            COALESCE(SUM(
+              CASE WHEN po.status = 'PAID' OR po.status = 'COMPLETED' THEN po.amount ELSE 0 END
+            ), 0) AS total_spent,
+            COUNT(DISTINCT r.id) AS runs_count
+     FROM mandates m
+     LEFT JOIN runs r ON r.mandate_id = m.id
+     LEFT JOIN payment_orders po ON po.run_id = r.id
+     WHERE m.owner = $1
+     GROUP BY m.id, m.definition, m.status, m.created_at
+     ORDER BY m.created_at ASC`,
     [owner]
   );
-  return result.rows.map((row) => row.definition as { id: string; owner: string; purpose: string; status: string; period: { type: string; budget: number }; caps: { perItem: number | null; perTransaction: number | null; maxQuantityPerItem: number }; askAbove: number | null; categories: string[]; expiresAt: string });
+  return result.rows.map((row) => ({
+    ...(row.definition as any),
+    status: row.status ?? (row.definition as any).status,
+    totalSpent: Number(row.total_spent || 0),
+    runsCount: Number(row.runs_count || 0)
+  }));
 }
 
 export async function listRunsForOwner(owner: string) {
