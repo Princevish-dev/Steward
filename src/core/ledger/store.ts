@@ -39,6 +39,7 @@ export async function recordLedgerEvent(input: LedgerInput): Promise<LedgerEntry
     const previousEntry = previous.rows[0];
     const timestamp = new Date(Math.floor(Date.now() / 1000) * 1000);
     const sequence = Number(nextSequence.rows[0].sequence);
+    const { userId: _userId, ...ledgerInput } = input;
     const candidate = appendLedgerEntry(
       [{
         sequence: sequence - 1,
@@ -50,7 +51,7 @@ export async function recordLedgerEvent(input: LedgerInput): Promise<LedgerEntry
         prevHash: GENESIS_HASH,
         entryHash: previousEntry ? String(previousEntry.entry_hash) : GENESIS_HASH
       }],
-      input,
+      ledgerInput,
       timestamp
     );
     const hasUserId = Boolean(input.userId);

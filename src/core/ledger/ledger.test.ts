@@ -26,6 +26,14 @@ describe("ledger", () => {
     expect(verifyLedger([tampered])).toEqual({ valid: false, invalidSequence: 1 });
   });
 
+  it("accepts legacy entries hashed with the owner userId", () => {
+    const legacy = appendLedgerEntry([], { ...input("RUN_STARTED"), userId: "alice@example.com" } as any);
+    const persisted = { ...legacy } as any;
+    delete persisted.userId;
+    expect(verifyLedger([persisted])).toEqual({ valid: false, invalidSequence: 1 });
+    expect(verifyLedger([persisted], "alice@example.com")).toEqual({ valid: true });
+  });
+
   it("survives JSONB-style key reordering", () => {
     const first = appendLedgerEntry([], {
       ...input("RUN_STARTED"),

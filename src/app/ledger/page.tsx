@@ -99,7 +99,7 @@ export default function LedgerPage() {
             </span>
           </div>
           <Button variant="secondary" size="sm" onClick={fetchLedger}>
-            Verify Chain
+            Verify Cryptographic Ledger
           </Button>
           <div className="flex items-center gap-2">
             <label className="text-xs text-text-secondary">Filter by Mandate</label>

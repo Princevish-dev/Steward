@@ -43,7 +43,7 @@ export async function POST(request: Request) {
   if (!Array.isArray(entries)) {
     return NextResponse.json({ error: "Request body must be a ledger entry array." }, { status: 422 });
   }
-  return NextResponse.json(verifyLedger(entries as LedgerEntry[]));
+  return NextResponse.json(verifyLedger(entries as LedgerEntry[], authorized.owner));
 }
 
 export async function GET(request: Request) {
@@ -58,6 +58,6 @@ export async function GET(request: Request) {
   const entries = await readLedgerForMandate(authorized.mandateId);
   return NextResponse.json({
     entries: await readLedgerGridForMandate(authorized.mandateId),
-    verification: verifyLedger(entries)
+    verification: verifyLedger(entries, authorized.owner)
   });
 }
