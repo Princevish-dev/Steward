@@ -96,8 +96,45 @@ async function cleanDatabase() {
     userId: cleanMandate.owner
   });
 
+  console.log("Seeding benchmark active mandate for judge@paypal.com...");
+  const judgeMandate: Mandate = {
+    ...cleanMandate,
+    id: `mdt_${crypto.randomUUID()}`,
+    owner: "judge@paypal.com"
+  };
+
+  await pool.query(
+    `INSERT INTO mandates (id, owner, user_id, purpose, definition, status, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6, now(), now())`,
+    [
+      judgeMandate.id,
+      judgeMandate.owner,
+      judgeMandate.owner,
+      judgeMandate.purpose,
+      JSON.stringify(judgeMandate),
+      judgeMandate.status
+    ]
+  );
+
+  await recordLedgerEvent({
+    type: "MANDATE_CREATED",
+    runId: "system",
+    mandateId: judgeMandate.id,
+    payload: { mandate: judgeMandate },
+    userId: judgeMandate.owner
+  });
+
+  await recordLedgerEvent({
+    type: "MANDATE_CONFIRMED",
+    runId: "system",
+    mandateId: judgeMandate.id,
+    payload: { status: "ACTIVE" },
+    userId: judgeMandate.owner
+  });
+
   console.log("✓ Neon database cleaned successfully!");
-  console.log(`✓ Active Mandate ID: ${cleanMandate.id} ("${cleanMandate.purpose}")`);
+  console.log(`✓ Active Mandate ID (pv405): ${cleanMandate.id}`);
+  console.log(`✓ Active Mandate ID (judge): ${judgeMandate.id}`);
   console.log(`✓ Budget: $220.00 | Cap: $60.00 | Ask Threshold: $80.00`);
   process.exit(0);
 }
@@ -106,3 +143,4 @@ cleanDatabase().catch((err) => {
   console.error("Clean database error:", err);
   process.exit(1);
 });
+
