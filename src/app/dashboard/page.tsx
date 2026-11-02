@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton";
 import { PageHeader } from "@/components/ui/page-header";
 import { DataTable } from "@/components/ui/data-table";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import dynamic from "next/dynamic";
 import type { LedgerGridRow } from "./LedgerGrid";
 
@@ -128,6 +129,13 @@ export default function DashboardPage() {
     type: "success" | "error";
     approvalUrl?: string | null;
   } | null>(null);
+  const [approvalChallenge, setApprovalChallenge] = useState<{
+    approvalId: string;
+    runId: string;
+    nonce: string;
+    prompt: string;
+  } | null>(null);
+  const [approvalPhrase, setApprovalPhrase] = useState("");
 
   // Read URL query parameters on load
   useEffect(() => {
@@ -358,18 +366,40 @@ export default function DashboardPage() {
     setProcessingApprovalId(approvalId);
     setApprovalMessage(null);
     try {
-      // 1. Resolve approval in DB
+      const challengeRes = await fetch(`/api/approvals/${encodeURIComponent(approvalId)}/challenge`, { method: "POST" });
+      const challenge = await readJson<{ nonce?: string; prompt?: string; error?: string }>(challengeRes);
+      if (!challengeRes.ok || !challenge.nonce || !challenge.prompt) {
+        throw new Error(challenge.error ?? "Could not prepare typed approval.");
+      }
+      setApprovalPhrase("");
+      setApprovalChallenge({ approvalId, runId, nonce: challenge.nonce, prompt: challenge.prompt });
+      setProcessingApprovalId(null);
+    } catch (err) {
+      setApprovalMessage({
+        text: err instanceof Error ? `Error: ${err.message}` : "Could not prepare typed approval.",
+        type: "error"
+      });
+      setProcessingApprovalId(null);
+    }
+  };
+
+  const confirmApproval = async () => {
+    if (!approvalChallenge) return;
+    const { approvalId, runId, nonce } = approvalChallenge;
+    setProcessingApprovalId(approvalId);
+    setApprovalMessage(null);
+    try {
       const res = await fetch("/api/approvals", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           id: approvalId,
           status: "APPROVED",
-          reviewer: "human-approver"
+          confirmation: { nonce, phrase: approvalPhrase }
         })
       });
-      const data = await readJson<{ error?: string }>(res);
-      if (!res.ok) throw new Error(data.error ?? "Failed to approve request.");
+      const data = await readJson<{ approval?: unknown; error?: string }>(res);
+      if (!res.ok || !data.approval) throw new Error(data.error ?? "Failed to approve request.");
 
       // 2. Create PayPal Sandbox Order for approved request (AWAITING_PAYPAL_APPROVAL)
       const orderRes = await fetch("/api/paypal/orders", {
@@ -393,7 +423,15 @@ export default function DashboardPage() {
       });
     } finally {
       setProcessingApprovalId(null);
+      setApprovalChallenge(null);
+      setApprovalPhrase("");
     }
+  };
+
+  const cancelApproval = () => {
+    setApprovalChallenge(null);
+    setApprovalPhrase("");
+    setProcessingApprovalId(null);
   };
 
   const handleReject = async (approvalId: string) => {
@@ -1377,7 +1415,7 @@ export default function DashboardPage() {
                       disabled={processingApprovalId === approval.id}
                       onClick={() => handleApprove(approval.id, approval.run_id)}
                     >
-                      {processingApprovalId === approval.id ? "Creating Order..." : "✓ Approve & Create PayPal Order"}
+                      {processingApprovalId === approval.id ? "Preparing confirmation..." : "✓ Approve & Create PayPal Order"}
                     </Button>
                     <Button
                       variant="danger"
@@ -1394,6 +1432,31 @@ export default function DashboardPage() {
           );
         })()}
       </section>
+
+      <ConfirmationDialog
+        isOpen={Boolean(approvalChallenge)}
+        title="Confirm approval"
+        description="Type the server-computed phrase to approve this request. This one-time challenge expires in five minutes."
+        confirmLabel="Approve & Create Order"
+        confirmVariant="success"
+        confirmDisabled={!approvalChallenge || approvalPhrase !== approvalChallenge.prompt}
+        confirmLoading={processingApprovalId !== null}
+        onConfirm={() => { void confirmApproval(); }}
+        onCancel={cancelApproval}
+      >
+        {approvalChallenge && (
+          <label className="mb-5 block text-sm text-text-primary">
+            Type <span className="font-mono font-semibold">{approvalChallenge.prompt}</span>
+            <input
+              autoFocus
+              value={approvalPhrase}
+              onChange={(event) => setApprovalPhrase(event.target.value)}
+              aria-label={`Type ${approvalChallenge.prompt} to approve`}
+              className="mt-2 w-full rounded border border-border bg-surface px-3 py-2 font-mono"
+            />
+          </label>
+        )}
+      </ConfirmationDialog>
 
       {/* Audit Ledger Preview */}
       <section className="content-section">
